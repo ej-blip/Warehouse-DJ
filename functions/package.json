@@ -1,0 +1,18 @@
+{
+  "name": "warehouse-dj-functions",
+  "description": "Backend for Warehouse DJ: talks to Spotify, enforces the queue rules and syncs state to Firestore.",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:integration": "firebase emulators:exec --only firestore --project demo-warehouse-dj \"node integration/run.js\""
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "firebase-admin": "^14.4.0",
+    "firebase-functions": "^7.4.0"
+  }
+}

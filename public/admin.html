@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1013">
+  <!-- Each iPad's link carries its secret; never send it to other sites. -->
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="/img/icon-180.png">
+  <title>Warehouse DJ Admin</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Warehouse <span>DJ</span> · Admin</div>
+    <div class="who"><span id="who"></span><button class="btn small" id="sign-out" hidden>Sign out</button></div>
+  </header>
+
+  <!-- First run: create the owner with the setup code. Also the forgotten-PIN reset. -->
+  <section id="setup" class="pinpad card" hidden>
+    <h2 id="setup-title">Set up Warehouse DJ</h2>
+    <p class="hint" id="setup-hint">Enter the setup code you saved when deploying, then choose your name and a 6–8 digit PIN.</p>
+    <form id="setup-form">
+      <div class="field"><label for="setup-code">Setup code</label><input id="setup-code" autocomplete="off" required></div>
+      <div class="field" id="setup-name-field"><label for="setup-name">Your name</label><input id="setup-name" maxlength="40" autocomplete="off"></div>
+      <div class="field"><label for="setup-pin">New PIN</label><input id="setup-pin" inputmode="numeric" pattern="\d{6,8}" maxlength="8" autocomplete="off" required></div>
+      <button class="btn primary" type="submit" style="width:100%">Continue</button>
+    </form>
+    <p class="hint" id="setup-back" hidden><a href="#" id="back-to-login">Back to sign in</a></p>
+  </section>
+
+  <section id="login" class="pinpad card" hidden>
+    <h2>Admin sign in</h2>
+    <form id="login-form">
+      <div class="field"><label for="login-pin">PIN</label><input id="login-pin" type="password" inputmode="numeric" pattern="\d{6,8}" maxlength="8" autocomplete="off" required></div>
+      <button class="btn primary" type="submit" style="width:100%">Sign in</button>
+    </form>
+    <p class="hint"><a href="#" id="forgot">Owner forgot their PIN?</a></p>
+  </section>
+
+  <main id="main" class="wrap" hidden>
+    <div class="banners" id="banners"></div>
+    <div class="grid player">
+      <div class="col col-left">
+        <section class="card">
+          <h2>Now playing</h2>
+          <div id="now"></div>
+          <div class="inline" style="margin-top:12px">
+            <label class="check"><input type="checkbox" id="loop"> Loop the playlist</label>
+            <label class="check"><input type="checkbox" id="shuffle"> Shuffle</label>
+          </div>
+          <p class="hint">Loop off: when the playlist ends, Spotify's Autoplay picks similar music (if Autoplay is on in the speaker iPad's Spotify settings).</p>
+        </section>
+
+        <section class="card">
+          <h2>Spotify</h2>
+          <div id="spotify"></div>
+          <h3>Speaker iPad</h3>
+          <div class="inline">
+            <div class="field" style="flex:1"><label for="speaker">Spotify device that plays through the speakers</label><select id="speaker"></select></div>
+            <button class="btn small" id="speaker-refresh" type="button">Refresh list</button>
+          </div>
+          <p class="hint">Open Spotify on the speaker iPad first so it shows up here.</p>
+        </section>
+
+        <section class="card">
+          <h2>Starting playlist</h2>
+          <p id="base-playlist" class="hint"></p>
+          <div class="tabs">
+            <button class="btn small" id="tab-mine" aria-pressed="true">Your playlists</button>
+            <button class="btn small" id="tab-search" aria-pressed="false">Search</button>
+          </div>
+          <form class="search" id="pl-search-form" hidden>
+            <input id="pl-search" type="search" placeholder="Search playlists" autocomplete="off" enterkeyhint="search">
+          </form>
+          <ul class="list" id="playlists"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Weekly favourites</h2>
+          <div id="favourites"></div>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="card">
+          <h2>Rules</h2>
+          <form id="rules">
+            <div class="label">Queueing days</div>
+            <div class="days" id="days"></div>
+            <div class="form-grid" style="margin-top:12px">
+              <div class="field"><label for="open">Queueing opens</label><input type="time" id="open" required></div>
+              <div class="field"><label for="close">Queueing closes</label><input type="time" id="close" required></div>
+            </div>
+            <h3>Breaks</h3>
+            <div id="breaks"></div>
+            <button class="btn small" type="button" id="add-break">Add a break</button>
+            <label class="check"><input type="checkbox" id="autoPause"> Pause the music when a break starts</label>
+            <label class="check"><input type="checkbox" id="autoResume"> Start it again when the break ends</label>
+            <h3>Limits</h3>
+            <div class="form-grid">
+              <div class="field"><label for="songsPerWindow">Songs per iPad</label><input type="number" id="songsPerWindow" min="1" max="20" required></div>
+              <div class="field"><label for="windowMinutes">…every (minutes)</label><input type="number" id="windowMinutes" min="1" max="240" required></div>
+              <div class="field"><label for="queueCap">Most songs in the queue</label><input type="number" id="queueCap" min="1" max="50" required></div>
+              <div class="field"><label for="maxTrackMinutes">Longest song (minutes)</label><input type="number" id="maxTrackMinutes" min="1" max="30" required></div>
+              <div class="field"><label for="noRepeatHours">No repeats within (hours)</label><input type="number" id="noRepeatHours" min="0" max="12" required></div>
+            </div>
+            <label class="check"><input type="checkbox" id="allowExplicit"> Allow explicit songs</label>
+            <button class="btn primary" type="submit" style="margin-top:8px">Save rules</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>iPads</h2>
+          <ul class="list" id="devices"></ul>
+          <form class="inline" id="add-device" style="margin-top:12px">
+            <div class="field" style="flex:1"><label for="device-name">New iPad name</label><input id="device-name" maxlength="40" placeholder="e.g. Packing 1" required></div>
+            <button class="btn primary" type="submit">Add iPad</button>
+          </form>
+          <div id="new-link" hidden style="margin-top:12px"></div>
+        </section>
+
+        <section class="card">
+          <h2>Admins</h2>
+          <ul class="list" id="admins"></ul>
+          <form class="inline" id="add-admin" style="margin-top:12px" hidden>
+            <div class="field"><label for="admin-name">Name</label><input id="admin-name" maxlength="40" required></div>
+            <div class="field"><label for="admin-pin">Their PIN (6–8 digits)</label><input id="admin-pin" inputmode="numeric" pattern="\d{6,8}" maxlength="8" required></div>
+            <button class="btn primary" type="submit">Add admin</button>
+          </form>
+          <form class="inline" id="change-pin" style="margin-top:12px">
+            <div class="field"><label for="my-pin">Change my PIN</label><input id="my-pin" type="password" inputmode="numeric" pattern="\d{6,8}" maxlength="8" required></div>
+            <button class="btn" type="submit">Change PIN</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">Song info and artwork from Spotify.</footer>
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// The iPads only ever read one document: public/state (now playing, up next, schedule).
+// Every write goes through the backend, which uses admin access and ignores these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /public/state {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
