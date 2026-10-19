@@ -1,0 +1,65 @@
+# Tests every push to the working branch, then deploys it to Firebase.
+# Needs the FIREBASE_SERVICE_ACCOUNT repository secret (see "Automatic deploys" in the
+# README). Until that secret exists, the tests still run and the deploy is skipped.
+name: Deploy to Firebase
+
+on:
+  push:
+    branches: [claude/sleepy-carson-oatjxh]
+  workflow_dispatch: # the "Run workflow" button on GitHub's Actions tab
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+        working-directory: functions
+      - run: npm install -g firebase-tools@15.34.0
+      - name: Unit tests
+        run: npm test
+        working-directory: functions
+      - name: End-to-end tests (Firestore emulator + fake Spotify)
+        run: npm run test:integration
+        working-directory: functions
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    steps:
+      - name: Skip if the deploy key isn't set up yet
+        if: env.HAS_KEY != 'true'
+        run: echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set, so nothing was deployed. See the README."
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+        if: env.HAS_KEY == 'true'
+        working-directory: functions
+      - uses: google-github-actions/auth@v2
+        if: env.HAS_KEY == 'true'
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Deploy
+        if: env.HAS_KEY == 'true'
+        run: npx --yes firebase-tools@15.34.0 deploy --project warehouse-dj-bd640 --non-interactive --force

@@ -189,6 +189,29 @@ At this size, everything should stay inside Firebase's free allowances, so expec
 
 Budget alerts only send emails; they don't stop charges. Your $1 alert will tell you early if that ever changes.
 
+## Automatic deploys
+
+Every push to the `claude/sleepy-carson-oatjxh` branch runs the tests on GitHub and, if they pass, deploys to `warehouse-dj-bd640` by itself. Nothing is deployed if a test fails. You can watch runs, or start one by hand, under the repository's **Actions** tab (**Deploy to Firebase → Run workflow**).
+
+One-time setup: a deploy account in Google Cloud, with its key stored in GitHub.
+
+1. Open <https://console.cloud.google.com/iam-admin/serviceaccounts?project=warehouse-dj-bd640> and click **+ Create service account**. Name it `github-deploy`, then click **Create and continue**.
+2. Add these roles, then click **Done**:
+   - Firebase Admin
+   - Cloud Functions Admin
+   - Cloud Run Admin
+   - Service Account User
+   - Cloud Scheduler Admin
+   - Secret Manager Admin
+   - Artifact Registry Administrator
+   - Service Usage Consumer
+3. Click the new account, open **Keys → Add key → Create new key → JSON → Create**. A `.json` file downloads.
+4. On GitHub, open the repository's **Settings → Secrets and variables → Actions → New repository secret**. Name it `FIREBASE_SERVICE_ACCOUNT`, paste the **entire contents** of the `.json` file, then click **Add secret**.
+5. Delete the downloaded `.json` file and empty the Bin. It works like a password.
+6. Go to **Actions → Deploy to Firebase → Run workflow** to deploy straight away.
+
+If a run fails with a "permission" error, the log names the missing role; add it to `github-deploy` in Google Cloud (**IAM → edit the account**). If Google refuses to create a key (an organisation policy), use a different way to sign in (Workload Identity Federation) instead.
+
 ## Moving to a work Spotify account later
 
 1. Get the work Premium account.
