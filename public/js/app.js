@@ -12,10 +12,13 @@ const state = {
   serverOffset: 0, // server clock minus this iPad's clock
   pub: null, // public/state
   conn: 'reconnecting',
+  mode: 'song', // song | artist | genre | playlists
   query: '',
-  results: [],
+  results: [], // search results, or the open playlist's songs
   offset: 0,
   more: false,
+  playlists: null, // warehouse playlists, loaded when the Playlists tab opens
+  openPlaylist: null, // { id, name } while one is open
   added: new Set(), // track ids this iPad added in this session
   searchSeq: 0,
   busy: new Set(), // controls waiting on the server
@@ -111,7 +114,7 @@ function renderBanners() {
   const sched = scheduleNow();
   if (musicOn() && sched && !sched.open) items.push(['info', sched.message]);
   $('#search-input').disabled = !musicOn();
-  $('#search-input').placeholder = musicOn() ? 'Search songs or artists' : 'Search opens during music hours';
+  $('#search-input').placeholder = musicOn() ? PLACEHOLDERS[state.mode] || PLACEHOLDERS.song : 'Search opens during music hours';
   box.replaceChildren(...items.map(([kind, text]) => el('div', { class: `banner ${kind}` }, text)));
 }
 
@@ -247,13 +250,14 @@ function renderQuota() {
 
 function renderResults() {
   const list = $('#results');
-  if (!state.query) {
+  const browsing = state.mode === 'playlists';
+  if (browsing ? !state.openPlaylist : !state.query) {
     list.replaceChildren();
     $('#more').hidden = true;
     return;
   }
   if (!state.results.length) {
-    list.replaceChildren(el('li', { class: 'empty' }, 'No songs found.'));
+    list.replaceChildren(el('li', { class: 'empty' }, browsing ? 'This playlist is empty.' : 'No songs found.'));
     $('#more').hidden = true;
     return;
   }
@@ -341,7 +345,7 @@ async function search({ append = false } = {}) {
   const seq = ++state.searchSeq;
   const offset = append ? state.offset + 10 : 0;
   try {
-    const r = await deviceApi(`/search?q=${encodeURIComponent(q)}&offset=${offset}`);
+    const r = await deviceApi(`/search?q=${encodeURIComponent(q)}&mode=${state.mode}&offset=${offset}`);
     if (seq !== state.searchSeq) return; // a newer search has started
     state.results = append ? [...state.results, ...r.tracks] : r.tracks;
     state.offset = offset;
@@ -379,7 +383,109 @@ function setupSearch() {
     renderResults();
     input.focus();
   });
-  $('#more').addEventListener('click', () => search({ append: true }));
+  $('#more').addEventListener('click', () => (state.mode === 'playlists' ? loadPlaylistSongs({ append: true }) : search({ append: true })));
+  for (const button of document.querySelectorAll('#modes button')) {
+    button.addEventListener('click', () => setMode(button.dataset.mode));
+  }
+}
+
+// ---- search modes and warehouse playlists ------------------------------------
+
+const PLACEHOLDERS = {
+  song: 'Search songs',
+  artist: 'Type an artist',
+  genre: 'Type a genre, e.g. jazz rap, lo-fi, 80s rock',
+};
+
+function setMode(mode) {
+  if (mode === state.mode) return;
+  state.mode = mode;
+  state.searchSeq++; // ignore answers to searches from the old mode
+  for (const b of document.querySelectorAll('#modes button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+  const browsing = mode === 'playlists';
+  $('#search-form').hidden = browsing;
+  $('#playlist-view').hidden = !browsing;
+  state.results = [];
+  state.openPlaylist = null;
+  if (browsing) {
+    loadPlaylists();
+  } else {
+    if (musicOn()) $('#search-input').placeholder = PLACEHOLDERS[mode];
+    if (state.query) search();
+  }
+  renderResults();
+}
+
+async function loadPlaylists() {
+  const box = $('#playlist-view');
+  box.replaceChildren(el('p', { class: 'empty' }, 'Loading…'));
+  try {
+    state.playlists = (await deviceApi('/playlists')).playlists;
+  } catch (err) {
+    box.replaceChildren(el('p', { class: 'empty' }, err.message));
+    return;
+  }
+  renderPlaylists();
+}
+
+function renderPlaylists() {
+  const box = $('#playlist-view');
+  if (state.openPlaylist) {
+    box.replaceChildren(
+      el('div', { class: 'playlist-head' },
+        el('button', { class: 'btn small', type: 'button', onclick: closePlaylist }, '← All playlists'),
+        el('span', { class: 'name' }, state.openPlaylist.name),
+      ),
+    );
+    return;
+  }
+  const list = state.playlists || [];
+  box.replaceChildren(
+    list.length
+      ? el('ul', { class: 'list' },
+          list.map((p) =>
+            el('li', { class: 'row' },
+              art(p.imageUrl, 'art small'),
+              el('div', { class: 'meta' },
+                el('div', { class: 'name' }, p.name),
+                el('div', { class: 'sub' }, [p.owner, p.trackCount ? `${p.trackCount} songs` : null].filter(Boolean).join(' · ')),
+              ),
+              el('button', { class: 'btn small primary', type: 'button', onclick: () => openPlaylist(p) }, 'Open'),
+            )))
+      : el('p', { class: 'empty' }, 'No warehouse playlists yet. An admin can add some.'),
+  );
+}
+
+function openPlaylist(p) {
+  state.openPlaylist = { id: p.id, name: p.name };
+  state.results = [];
+  renderPlaylists();
+  renderResults();
+  loadPlaylistSongs();
+}
+
+function closePlaylist() {
+  state.openPlaylist = null;
+  state.results = [];
+  renderPlaylists();
+  renderResults();
+}
+
+async function loadPlaylistSongs({ append = false } = {}) {
+  const open = state.openPlaylist;
+  if (!open) return;
+  const seq = ++state.searchSeq;
+  const offset = append ? state.offset + 50 : 0;
+  try {
+    const r = await deviceApi(`/playlists/${encodeURIComponent(open.id)}/tracks?offset=${offset}`);
+    if (seq !== state.searchSeq || state.openPlaylist !== open) return;
+    state.results = append ? [...state.results, ...r.tracks] : r.tracks;
+    state.offset = offset;
+    state.more = r.more;
+    renderResults();
+  } catch (err) {
+    if (seq === state.searchSeq) toast(err.message, 'bad');
+  }
 }
 
 // ---- start ----------------------------------------------------------------

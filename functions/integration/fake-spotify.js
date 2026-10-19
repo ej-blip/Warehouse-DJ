@@ -26,16 +26,19 @@ function makeTrack(key, name, extra = {}) {
 
 function createFakeSpotify() {
   const catalogue = [
-    makeTrack('songA', 'Song A'),
-    makeTrack('songB', 'Song B'),
-    makeTrack('songC', 'Song C'),
-    makeTrack('songD', 'Song D'),
+    makeTrack('songA', 'Song A', { popularity: 40, genre: 'pop' }),
+    makeTrack('songB', 'Song B', { popularity: 80, genre: 'jazz rap' }),
+    makeTrack('songC', 'Song C', { popularity: 60, genre: 'jazz rap' }),
+    makeTrack('songD', 'Song D', { popularity: 70, genre: 'jazz rap' }),
     makeTrack('songLong', 'Song Long', { duration_ms: 9 * 60000 }),
     makeTrack('base1', 'Base One'),
     makeTrack('base2', 'Base Two'),
     makeTrack('base3', 'Base Three'),
   ];
   const byUri = new Map(catalogue.map((t) => [t.uri, t]));
+  const mixPlaylist = { id: id22('mix'), uri: `spotify:playlist:${id22('mix')}`, name: 'Warehouse Mix', owner: { display_name: 'Host Account' }, images: [], items: { total: 3 } };
+  // Spotify's own editorial playlists can be played but not read by newer apps.
+  const editorialPlaylist = { id: id22('top50'), uri: `spotify:playlist:${id22('top50')}`, name: 'Top 50 - Australia', owner: { display_name: 'Spotify' }, images: [], items: { total: 50 } };
   const contextTracks = catalogue.filter((t) => t.name.startsWith('Base'));
 
   const s = {
@@ -192,8 +195,18 @@ function createFakeSpotify() {
     }
     if (req.method === 'GET' && path === '/v1/search') {
       const q = (url.searchParams.get('q') || '').toLowerCase();
+      s.lastSearchQuery = url.searchParams.get('q');
       if (Number(url.searchParams.get('limit')) > 10) return send(res, 400, { error: { status: 400, message: 'Invalid limit' } });
-      const items = catalogue.filter((t) => t.name.toLowerCase().includes(q));
+      if (url.searchParams.get('type') === 'playlist') {
+        // Spotify's playlist search really does include null entries.
+        return send(res, 200, { playlists: { items: [mixPlaylist, null, editorialPlaylist], total: 2, next: null } });
+      }
+      const filter = /^(artist|genre):"(.*)"$/.exec(q);
+      const items = catalogue.filter((t) => {
+        if (!filter) return t.name.toLowerCase().includes(q);
+        if (filter[1] === 'artist') return t.artists[0].name.toLowerCase().includes(filter[2]);
+        return t.genre === filter[2];
+      });
       return send(res, 200, { tracks: { items, total: items.length, next: null } });
     }
     if (req.method === 'GET' && path === '/v1/me/playlists') {
@@ -206,6 +219,17 @@ function createFakeSpotify() {
       return send(res, 201, { id: pid, uri: `spotify:playlist:${pid}`, external_urls: { spotify: `https://open.spotify.com/playlist/${pid}` } });
     }
     const items = /^\/v1\/playlists\/([^/]+)\/items$/.exec(path);
+    if (req.method === 'GET' && items) {
+      // Since 2026 each entry's track is under "item".
+      let tracks;
+      if (s.playlists[items[1]]) tracks = s.playlists[items[1]].uris.map((u) => byUri.get(u));
+      else if (items[1] === mixPlaylist.id) tracks = contextTracks;
+      else return send(res, 404, { error: { status: 404, message: 'Resource not found' } });
+      const offset = Number(url.searchParams.get('offset')) || 0;
+      const limit = Number(url.searchParams.get('limit')) || 50;
+      const page = tracks.slice(offset, offset + limit);
+      return send(res, 200, { items: page.map((t) => ({ added_at: '2026-10-19T00:00:00Z', item: t })), total: tracks.length, next: offset + limit < tracks.length ? 'more' : null });
+    }
     if (req.method === 'PUT' && items) {
       const pl = s.playlists[items[1]];
       if (!pl) return send(res, 404, { error: { status: 404, message: 'Not found' } });

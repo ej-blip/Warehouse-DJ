@@ -63,6 +63,9 @@ img { display: block; }
   .grid.player { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; }
 }
 .col { display: grid; gap: var(--gap); }
+/* Grid children default to their content's width; let them shrink so a long line can't
+   push one column underneath the other. */
+.grid > *, .col > * { min-width: 0; }
 
 .card {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
@@ -122,7 +125,7 @@ img { display: block; }
 .row:last-child { border-bottom: 0; }
 .row .meta { flex: 1; min-width: 0; }
 .row .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row .sub { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .sub { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
 .row .why { color: var(--muted); font-size: 13px; max-width: 160px; text-align: right; }
 .badge {
   display: inline-block; font-size: 11px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
@@ -187,7 +190,15 @@ img { display: block; }
 .toast.good { border-color: var(--good); }
 .toast.bad { border-color: var(--bad); }
 
-.footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px var(--gap) 24px; }
+.footer {
+  color: var(--muted); font-size: 13px; padding: 8px var(--gap) 24px;
+  display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;
+}
+/* Spotify's logo needs clear space around it and at least 70px width. */
+.spotify-credit { display: inline-flex; align-items: center; gap: 10px; padding: 11px; color: var(--muted); text-decoration: none; }
+.spotify-credit img { height: 22px; width: auto; }
+.playlist-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.playlist-head .name { font-weight: 800; font-size: 18px; }
 .admin-link { color: var(--muted); margin-left: 12px; padding: 8px; text-decoration: none; border-bottom: 1px dotted var(--muted); }
 .search input:disabled { opacity: 0.5; }
 .center-screen { max-width: 520px; margin: 14vh auto; text-align: center; padding: var(--gap); }

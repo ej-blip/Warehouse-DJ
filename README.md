@@ -124,7 +124,7 @@ To deploy updates later, run `firebase deploy` again.
    - Under **Settings → Playback → Autoplay**, choose whether Spotify keeps playing similar music after a playlist ends.
 3. On the admin page:
    - Under **Speaker iPad**, choose it from the list.
-   - Under **Starting playlist**, tap **Play** on the playlist you want. It plays whenever nobody has queued anything.
+   - Under **Playlists**, search Spotify for a playlist and tap **Play**. It plays whenever nobody has queued anything. **Add to list** also puts it on the warehouse list, so everyone can browse it on the iPads.
 
 **Breaks tip:** after clocking out in Roster Elf, switch the speaker iPad back to the Spotify app and leave it on screen. iOS can close Spotify when it sits paused in the background, and then nothing can start it remotely. If that does happen, the worker iPads say *"Open Spotify on the clock-in iPad and press play"*. Whoever clocks in first can do that.
 
@@ -151,6 +151,8 @@ To add more admins, the owner adds them under **Admins**, giving each person the
 ## Day to day
 
 - **Queueing.** Workers search, tap **Add**, and the song joins the queue. Each iPad shows how many songs it has left and when its next one frees up, so nobody needs to keep checking.
+- **Search modes.** **Song** (the default) searches everything; **Artist** finds songs by an artist; **Genre** finds songs in a Spotify genre (e.g. *jazz rap*, *lo-fi*), most popular first. Spotify's genre names are its own, so try a couple of wordings.
+- **Playlists tab.** Shows the warehouse playlists: Warehouse Favourites plus any an admin added. Open one to add its songs one at a time (the usual limits apply). Your own Spotify playlists never appear anywhere in the app.
 - **Breaks.** Queueing closes at 10:20am and 1:20pm. The music pauses and starts again at 10:40am and 2:00pm, and songs queued before the break are still there afterwards. If Spotify lost them because iOS closed the app, the backend adds them back when the music restarts.
 - **Music hours.** Before 8:00am and after 4:00pm, the iPads show a "Music hours" message and can't search, queue or control the music. Admins can still control it from the admin page. "Recently played" starts empty each morning.
 - **Admins** can also skip, loop or shuffle the playlist, change the starting playlist and change any rule.
@@ -180,6 +182,7 @@ Since July 2026, Spotify ends app logins 6 months after you sign in, however oft
 | Music doesn't pause at a break | Tap **Test a break** on the admin page. If that works, check the break times and work days in **Rules**. |
 | "Reconnecting…" banner | The Wi-Fi dropped. It recovers by itself. |
 | A Spotify-made playlist won't start from the admin page | Spotify blocks some of its own playlists from apps. Start it in the Spotify app on the speaker iPad instead. |
+| A playlist on the warehouse list says "iPads can't open this one" | Spotify won't let apps read that playlist's songs (common for Spotify's own playlists). Admins can still play it; workers won't see it. |
 | Owner forgot their PIN | Admin sign-in → **Owner forgot their PIN?** → enter the setup code. |
 | Something else | Firebase console → **Functions → Logs** shows what the backend did. |
 
@@ -224,7 +227,7 @@ Your personal account must keep Premium while it owns the developer app. Alterna
 
 ## Things to know
 
-- **Spotify branding.** Spotify's developer terms require attribution. The pages say *"Song info and artwork from Spotify"* and link each song back to Spotify. Spotify's official logo isn't in the repo yet: download it from Spotify's Design & Branding Guidelines and add it to the page footers.
+- **Spotify branding.** Spotify's developer terms require attribution: both pages show the official Spotify logo in the footer, linked to Spotify, and each song links back to Spotify.
 - **Licensing.** Spotify's consumer terms limit Premium to personal, non-commercial use. Check with whoever handles compliance before relying on this long term.
 - **The queue can't be edited.** Spotify doesn't let apps remove or reorder queued songs. Skip a song when it comes up.
 - **Volume is set by hand** on the speaker iPad or the amp.

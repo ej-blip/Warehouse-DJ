@@ -7,6 +7,7 @@
 const { logger } = require('firebase-functions');
 const spotify = require('./spotify');
 const store = require('./store');
+const playlists = require('./playlists');
 const { weekKeyAt } = require('./time');
 const { FAVOURITES_PLAYLIST_NAME, FAVOURITES_MAX_TRACKS } = require('./config');
 const { SpotifyError, UserError, toUserError } = require('./errors');
@@ -82,6 +83,7 @@ async function build({ weekKey = weekKeyAt(Date.now()) } = {}) {
     throw toUserError(err);
   }
 
+  playlists.forget(fav.playlistId);
   const favourites = { ...fav, weekKey, builtAt: Date.now(), trackCount: uris.length };
   await store.patchSettings({ favourites });
   logger.info('Favourites rebuilt', { weekKey, tracks: uris.length });

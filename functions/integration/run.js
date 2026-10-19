@@ -149,6 +149,18 @@ test('search results are capped at 10 and flag songs that break the rules', asyn
   assert.equal(fake.state.lastCatalogueAuth, 'app');
 });
 
+test('search modes: artist and genre filters, with genre results most popular first', async () => {
+  const artist = await call('GET', '/api/search?q=Song%20B%20Artist&mode=artist', { device: ipad1 });
+  assert.equal(fake.state.lastSearchQuery, 'artist:"Song B Artist"');
+  assert.deepEqual(artist.body.tracks.map((t) => t.name), ['Song B']);
+  const genre = await call('GET', '/api/search?q=jazz%20rap&mode=genre', { device: ipad1 });
+  assert.equal(fake.state.lastSearchQuery, 'genre:"jazz rap"');
+  assert.deepEqual(genre.body.tracks.map((t) => t.name), ['Song B', 'Song D', 'Song C']);
+  const unknownMode = await call('GET', '/api/search?q=song&mode=nope', { device: ipad1 });
+  assert.equal(fake.state.lastSearchQuery, 'song');
+  assert.equal(unknownMode.status, 200);
+});
+
 test('queueing enforces 3 songs per iPad, no duplicates, and fills Up Next', async () => {
   const [A, B, C, D] = fake.catalogue;
   const q = (device, track) => call('POST', '/api/queue', { device, body: { uri: track.uri } });
@@ -254,6 +266,32 @@ test('weekly favourites: liked songs first, then queued ones', async () => {
   assert.equal(again.body.playlistId, r.body.playlistId);
   const preview = await call('GET', '/api/admin/favourites', { admin: ownerToken });
   assert.equal(preview.body.thisWeek.top[0].likes, 2);
+});
+
+test('warehouse playlists: everyone can open Favourites and admin-added playlists', async () => {
+  const found = await call('GET', '/api/admin/playlists?q=mix', { admin: ownerToken });
+  assert.equal(found.body.playlists.length, 2); // Spotify's null entries are dropped
+  const [mix, top50] = found.body.playlists;
+  assert.equal((await call('POST', '/api/admin/warehouse-playlists', { admin: ownerToken, body: mix })).body.browsable, true);
+  assert.equal((await call('POST', '/api/admin/warehouse-playlists', { admin: ownerToken, body: top50 })).body.browsable, false);
+  assert.equal((await call('POST', '/api/admin/warehouse-playlists', { admin: ownerToken, body: mix })).body.error, 'already_added');
+  const adminList = await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken });
+  assert.deepEqual(adminList.body.playlists.map((p) => p.name), ['Warehouse Favourites', 'Warehouse Mix', 'Top 50 - Australia']);
+
+  // iPads see only the playlists they can open.
+  const list = await call('GET', '/api/playlists', { device: ipad1 });
+  assert.deepEqual(list.body.playlists.map((p) => p.name), ['Warehouse Favourites', 'Warehouse Mix']);
+  const songs = await call('GET', `/api/playlists/${list.body.playlists[0].id}/tracks`, { device: ipad1 });
+  assert.equal(songs.body.tracks[0].name, 'Song A'); // the most-liked song leads Favourites
+  assert.ok(songs.body.tracks.every((t) => 'blocked' in t));
+  const mixSongs = await call('GET', `/api/playlists/${mix.id}/tracks`, { device: ipad1 });
+  assert.deepEqual(mixSongs.body.tracks.map((t) => t.name), ['Base One', 'Base Two', 'Base Three']);
+  // Playlists that aren't on the list (or that Spotify blocks) can't be opened.
+  assert.equal((await call('GET', `/api/playlists/${top50.id}/tracks`, { device: ipad1 })).status, 404);
+  assert.equal((await call('GET', `/api/playlists/${'z'.repeat(22)}/tracks`, { device: ipad1 })).status, 404);
+
+  await call('DELETE', `/api/admin/warehouse-playlists/${top50.id}`, { admin: ownerToken });
+  assert.equal((await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists.length, 2);
 });
 
 test('an iPad can be set up on the device itself with an admin PIN', async () => {

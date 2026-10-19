@@ -148,7 +148,7 @@ async function enterMain() {
   show('main');
   renderOverview();
   loadSpeakers();
-  loadPlaylists();
+  loadWarehousePlaylists();
   loadFavourites();
   if (!s.watching) {
     s.watching = true;
@@ -271,25 +271,64 @@ function renderBase() {
     : "None chosen yet. It plays whenever nobody's queued anything.";
 }
 
-async function loadPlaylists(query = '') {
+function playlistRow(p, ...actions) {
+  const sub = [p.owner, p.trackCount ? `${p.trackCount} songs` : null, p.browsable === false ? "iPads can't open this one (Spotify blocks it), but you can play it" : null];
+  return el('li', { class: 'row' },
+    art(p.imageUrl, 'art small'),
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, p.name), el('div', { class: 'sub' }, sub.filter(Boolean).join(' · '))),
+    ...actions,
+  );
+}
+
+const playButton = (p) => el('button', { class: 'btn small primary', onclick: (e) => playPlaylist(e.currentTarget, p) }, 'Play');
+
+async function loadWarehousePlaylists() {
+  const list = $('#warehouse-playlists');
+  try {
+    const { playlists } = await adminApi('/warehouse-playlists');
+    list.replaceChildren(
+      ...(playlists.length
+        ? playlists.map((p) =>
+            playlistRow(p,
+              playButton(p),
+              p.kind === 'saved'
+                ? el('button', {
+                    class: 'btn small danger',
+                    onclick: async (e) => {
+                      if (await act(e.currentTarget, () => adminApi(`/warehouse-playlists/${p.id}`, { method: 'DELETE' }), `Removed ${p.name}.`)) loadWarehousePlaylists();
+                    },
+                  }, 'Remove')
+                : null,
+            ))
+        : [el('li', { class: 'empty' }, 'None yet. Rebuild Warehouse Favourites below, or search for playlists to add.')]),
+    );
+  } catch (err) {
+    list.replaceChildren(el('li', { class: 'empty' }, err.message));
+  }
+}
+
+async function searchPlaylists(query) {
   const list = $('#playlists');
   if (!s.overview.spotify.connected) {
     list.replaceChildren(el('li', { class: 'empty' }, 'Connect Spotify first.'));
     return;
   }
-  list.replaceChildren(el('li', { class: 'empty' }, 'Loading…'));
+  list.replaceChildren(el('li', { class: 'empty' }, 'Searching…'));
   try {
-    const { playlists } = await adminApi(`/playlists${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+    const { playlists } = await adminApi(`/playlists?q=${encodeURIComponent(query)}`);
     list.replaceChildren(
       ...(playlists.length
         ? playlists.map((p) =>
-            el('li', { class: 'row' },
-              art(p.imageUrl, 'art small'),
-              el('div', { class: 'meta' },
-                el('div', { class: 'name' }, p.name),
-                el('div', { class: 'sub' }, [p.owner, p.trackCount !== null ? `${p.trackCount} songs` : null].filter(Boolean).join(' · ')),
-              ),
-              el('button', { class: 'btn small primary', onclick: (e) => playPlaylist(e.currentTarget, p) }, 'Play'),
+            playlistRow(p,
+              playButton(p),
+              el('button', {
+                class: 'btn small',
+                onclick: async (e) => {
+                  const r = await act(e.currentTarget, () => adminApi('/warehouse-playlists', { method: 'POST', body: p }), (res) =>
+                    res.browsable ? `Added ${p.name} for everyone.` : `Added ${p.name}. Spotify won't let the iPads open it, but you can play it.`);
+                  if (r) loadWarehousePlaylists();
+                },
+              }, 'Add to list'),
             ))
         : [el('li', { class: 'empty' }, 'No playlists found.')]),
     );
@@ -457,7 +496,10 @@ async function loadFavourites() {
       class: 'btn small',
       onclick: async (e) => {
         const r = await act(e.currentTarget, () => adminApi('/favourites/rebuild', { method: 'POST', body: {} }), (res) => (res.skipped ? res.message : `Playlist rebuilt with ${res.trackCount} songs.`));
-        if (r) loadFavourites();
+        if (r) {
+          loadFavourites();
+          loadWarehousePlaylists();
+        }
       },
     }, 'Rebuild now from this week');
     const play = fav
@@ -497,23 +539,10 @@ function wireMain() {
     act(null, () => saveSettings({ speakerDeviceName: e.target.value }, e.target.value ? `Speaker set to ${e.target.value}.` : 'Speaker cleared.')));
   $('#speaker-refresh').addEventListener('click', () => loadSpeakers());
 
-  $('#tab-mine').addEventListener('click', () => {
-    $('#tab-mine').setAttribute('aria-pressed', 'true');
-    $('#tab-search').setAttribute('aria-pressed', 'false');
-    $('#pl-search-form').hidden = true;
-    loadPlaylists();
-  });
-  $('#tab-search').addEventListener('click', () => {
-    $('#tab-mine').setAttribute('aria-pressed', 'false');
-    $('#tab-search').setAttribute('aria-pressed', 'true');
-    $('#pl-search-form').hidden = false;
-    $('#playlists').replaceChildren();
-    $('#pl-search').focus();
-  });
   $('#pl-search-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const q = $('#pl-search').value.trim();
-    if (q) loadPlaylists(q);
+    if (q) searchPlaylists(q);
   });
 
   $('#add-break').addEventListener('click', () => $('#breaks').append(breakRow()));

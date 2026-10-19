@@ -31,6 +31,9 @@ const SEARCH_PAGE_SIZE = 10;
 
 const FAVOURITES_PLAYLIST_NAME = 'Warehouse Favourites';
 const FAVOURITES_MAX_TRACKS = 100;
+// Playlists admins add for everyone to browse and queue from.
+const MAX_WAREHOUSE_PLAYLISTS = 12;
+const PLAYLIST_PAGE_SIZE = 50;
 
 const DEFAULT_SETTINGS = Object.freeze({
   days: [1, 2, 3, 4, 5], // work days (ISO weekdays, 1 = Monday)
@@ -54,6 +57,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   allowExplicit: true,
   speakerDeviceName: '',
   basePlaylist: null, // { uri, name }
+  warehousePlaylists: [], // [{ id, uri, name, owner, imageUrl, browsable }]
   favourites: null, // { playlistId, uri, url, ownerId, weekKey, builtAt, trackCount }
 });
 
@@ -71,5 +75,7 @@ module.exports = {
   SEARCH_PAGE_SIZE,
   FAVOURITES_PLAYLIST_NAME,
   FAVOURITES_MAX_TRACKS,
+  MAX_WAREHOUSE_PLAYLISTS,
+  PLAYLIST_PAGE_SIZE,
   DEFAULT_SETTINGS,
 };

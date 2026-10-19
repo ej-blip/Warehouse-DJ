@@ -13,6 +13,7 @@ const {
   SPOTIFY_ACCOUNTS_BASE,
   SPOTIFY_LOGIN_LIFETIME_DAYS,
   SEARCH_PAGE_SIZE,
+  PLAYLIST_PAGE_SIZE,
 } = require('./config');
 const { SPOTIFY_CLIENT_SECRET } = require('./secrets');
 const { SpotifyError, SpotifyAuthError } = require('./errors');
@@ -238,6 +239,8 @@ function normalizeTrack(t) {
     durationMs: t.duration_ms || 0,
     explicit: Boolean(t.explicit),
     playable: t.is_playable !== false,
+    // Spotify stopped sending this to some apps in 2026; null when missing.
+    popularity: typeof t.popularity === 'number' ? t.popularity : null,
   };
 }
 
@@ -283,7 +286,9 @@ module.exports = {
   track: (id) => call('GET', `/tracks/${encodeURIComponent(id)}`, { query: { market }, as: 'app' }),
   searchTracks: (q, offset = 0) => call('GET', '/search', { query: { q, type: 'track', market, limit: SEARCH_PAGE_SIZE, offset }, as: 'app' }),
   searchPlaylists: (q, offset = 0) => call('GET', '/search', { query: { q, type: 'playlist', market, limit: SEARCH_PAGE_SIZE, offset }, as: 'app' }),
-  myPlaylists: () => call('GET', '/me/playlists', { query: { limit: 50 } }),
+  // Read as the host account, which can see its own private playlists (Warehouse Favourites).
+  playlistItems: (id, offset = 0, limit = PLAYLIST_PAGE_SIZE) =>
+    call('GET', `/playlists/${encodeURIComponent(id)}/items`, { query: { market, limit, offset, additional_types: 'track' } }),
   createPlaylist: (name, description) => call('POST', '/me/playlists', { body: { name, description, public: false } }),
   // Spotify renamed /tracks to /items in February 2026; the old path is refused in Development Mode.
   replacePlaylistItems: (id, uris) => call('PUT', `/playlists/${encodeURIComponent(id)}/items`, { body: { uris } }),

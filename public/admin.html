@@ -65,14 +65,15 @@
         </section>
 
         <section class="card">
-          <h2>Starting playlist</h2>
+          <h2>Playlists</h2>
           <p id="base-playlist" class="hint"></p>
-          <div class="tabs">
-            <button class="btn small" id="tab-mine" aria-pressed="true">Your playlists</button>
-            <button class="btn small" id="tab-search" aria-pressed="false">Search</button>
-          </div>
-          <form class="search" id="pl-search-form" hidden>
-            <input id="pl-search" type="search" placeholder="Search playlists" autocomplete="off" enterkeyhint="search">
+          <h3>Warehouse playlists</h3>
+          <p class="hint">Everyone can open these on the iPads and add songs from them. Tap Play to make one the starting playlist.</p>
+          <ul class="list" id="warehouse-playlists"></ul>
+          <h3>Find more on Spotify</h3>
+          <form class="search" id="pl-search-form">
+            <input id="pl-search" type="search" placeholder="Search Spotify playlists" autocomplete="off" enterkeyhint="search">
+            <button class="btn" type="submit">Search</button>
           </form>
           <ul class="list" id="playlists"></ul>
         </section>
@@ -158,7 +159,9 @@
     </div>
   </main>
 
-  <footer class="footer">Song info and artwork from Spotify.</footer>
+  <footer class="footer">
+    <a class="spotify-credit" href="https://open.spotify.com" target="_blank" rel="noopener">Music from <img src="/img/spotify-logo-white.png" alt="Spotify" width="80" height="22"></a>
+  </footer>
   <script type="module" src="/js/admin.js"></script>
 </body>
 </html>

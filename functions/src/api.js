@@ -8,6 +8,8 @@ const { logger } = require('firebase-functions');
 const auth = require('./auth');
 const playback = require('./playback');
 const favourites = require('./favourites');
+const playlists = require('./playlists');
+const search = require('./search');
 const spotify = require('./spotify');
 const store = require('./store');
 const rules = require('./rules');
@@ -73,13 +75,30 @@ app.get('/api/me', requireDevice, wrap(async (req, res) => {
   });
 }));
 
-app.get('/api/search', requireDevice, requireEnabled, searchLimit, wrap(async (req, res) => {
+// Flag songs that can't be queued right now, so the iPad can grey them out.
+async function annotate(tracks) {
+  playback.rememberTracks(tracks);
+  const [settings, c] = await Promise.all([store.getSettings(), store.readCore()]);
+  const now = Date.now();
+  return tracks.map((t) => ({
+    ...t,
+    blocked: t.playable ? rules.trackBlock(now, settings, c, t) : { code: 'unplayable', message: 'Not available in Australia.' },
+  }));
+}
+
+async function requireMusicHours() {
   const music = rules.musicStatus(Date.now(), await store.getSettings());
   if (!music.on) throw new UserError('music_off', music.message, 409);
-  const q = String(req.query.q || '').trim();
+}
+
+app.get('/api/search', requireDevice, requireEnabled, searchLimit, wrap(async (req, res) => {
+  await requireMusicHours();
+  const mode = search.MODES.includes(req.query.mode) ? req.query.mode : 'song';
+  const text = String(req.query.q || '');
   const offset = Math.min(Math.max(parseInt(req.query.offset, 10) || 0, 0), 200);
+  if (text.length > 100) throw new UserError('bad_query', 'That search is too long.');
+  const q = search.buildSearchQuery(mode, text);
   if (!q) return res.json({ tracks: [], offset, total: 0, more: false });
-  if (q.length > 100) throw new UserError('bad_query', 'That search is too long.');
   let data;
   try {
     data = await spotify.searchTracks(q, offset);
@@ -87,19 +106,21 @@ app.get('/api/search', requireDevice, requireEnabled, searchLimit, wrap(async (r
     throw toUserError(err);
   }
   const page = (data && data.tracks) || { items: [], total: 0 };
-  const tracks = (page.items || []).map(spotify.normalizeTrack).filter(Boolean);
-  playback.rememberTracks(tracks);
-  const [settings, c] = await Promise.all([store.getSettings(), store.readCore()]);
-  const now = Date.now();
-  res.json({
-    tracks: tracks.map((t) => ({
-      ...t,
-      blocked: t.playable ? rules.trackBlock(now, settings, c, t) : { code: 'unplayable', message: "Not available in Australia." },
-    })),
-    offset,
-    total: page.total || 0,
-    more: Boolean(page.next),
-  });
+  const tracks = search.rankResults(mode, (page.items || []).map(spotify.normalizeTrack).filter(Boolean));
+  res.json({ tracks: await annotate(tracks), offset, total: page.total || 0, more: Boolean(page.next) });
+}));
+
+// Warehouse playlists that workers can open (ones Spotify lets the app read).
+app.get('/api/playlists', requireDevice, requireEnabled, wrap(async (req, res) => {
+  const list = playlists.warehouseList(await store.getSettings()).filter((p) => p.browsable);
+  res.json({ playlists: list.map(({ id, name, owner, imageUrl, kind, trackCount }) => ({ id, name, owner, imageUrl, kind, trackCount })) });
+}));
+
+app.get('/api/playlists/:id/tracks', requireDevice, requireEnabled, searchLimit, wrap(async (req, res) => {
+  await requireMusicHours();
+  const offset = Math.min(Math.max(parseInt(req.query.offset, 10) || 0, 0), 1000);
+  const page = await playlists.tracksFor(await store.getSettings(), req.params.id, offset);
+  res.json({ tracks: await annotate(page.tracks), offset, total: page.total, more: page.more });
 }));
 
 app.post('/api/queue', requireDevice, requireEnabled, wrap(async (req, res) => {
@@ -258,16 +279,34 @@ app.post('/api/admin/test-break', requireAdmin, wrap(async (req, res) => {
   res.json(await playback.testBreak(seconds));
 }));
 
+// Search Spotify for playlists to play or add to the warehouse list. The host's own
+// playlists aren't listed anywhere.
 app.get('/api/admin/playlists', requireAdmin, wrap(async (req, res) => {
-  const q = String(req.query.q || '').trim();
+  const q = String(req.query.q || '').trim().slice(0, 100);
+  if (!q) return res.json({ playlists: [] });
   let items;
   try {
-    const data = q ? await spotify.searchPlaylists(q) : await spotify.myPlaylists();
-    items = q ? (data && data.playlists && data.playlists.items) || [] : (data && data.items) || [];
+    const data = await spotify.searchPlaylists(q);
+    items = (data && data.playlists && data.playlists.items) || [];
   } catch (err) {
     throw toUserError(err);
   }
   res.json({ playlists: items.map(spotify.normalizePlaylist).filter(Boolean) });
+}));
+
+app.get('/api/admin/warehouse-playlists', requireAdmin, wrap(async (req, res) => {
+  res.json({ playlists: playlists.warehouseList(await store.getSettings({ fresh: true })) });
+}));
+
+app.post('/api/admin/warehouse-playlists', requireAdmin, wrap(async (req, res) => {
+  const entry = await playlists.add(req.body || {});
+  logger.info('Warehouse playlist added', { name: entry.name, by: req.admin.name });
+  res.json(entry);
+}));
+
+app.delete('/api/admin/warehouse-playlists/:id', requireAdmin, wrap(async (req, res) => {
+  await playlists.remove(req.params.id);
+  res.json({ ok: true });
 }));
 
 app.post('/api/admin/playlist/play', requireAdmin, wrap(async (req, res) => {
