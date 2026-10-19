@@ -42,6 +42,8 @@ function createFakeSpotify() {
     catalogue,
     accessToken: null,
     refreshToken: null,
+    appToken: null,
+    lastCatalogueAuth: null,
     rejectRefresh: false,
     me: { id: 'host-user', display_name: 'Host Account' },
     devices: [{ id: 'dev-speaker', name: 'Clock-in iPad', type: 'Tablet', is_active: false, is_restricted: false, is_private_session: false }],
@@ -98,6 +100,10 @@ function createFakeSpotify() {
         s.refreshToken = 'refresh-1';
         return send(res, 200, { access_token: s.accessToken, token_type: 'Bearer', expires_in: 3600, refresh_token: s.refreshToken, scope: 'x' });
       }
+      if (p.get('grant_type') === 'client_credentials') {
+        s.appToken = 'app-token';
+        return send(res, 200, { access_token: s.appToken, token_type: 'Bearer', expires_in: 3600 });
+      }
       if (p.get('grant_type') === 'refresh_token') {
         if (s.rejectRefresh || p.get('refresh_token') !== s.refreshToken) {
           return send(res, 400, { error: 'invalid_grant', error_description: 'Refresh token expired' });
@@ -108,9 +114,13 @@ function createFakeSpotify() {
       return send(res, 400, { error: 'unsupported_grant_type' });
     }
 
-    if (req.headers.authorization !== `Bearer ${s.accessToken}`) {
+    // Catalogue endpoints accept the app's own token; everything else needs the user's.
+    const isCatalogue = path === '/v1/search' || path.startsWith('/v1/tracks/');
+    const asApp = Boolean(s.appToken) && req.headers.authorization === `Bearer ${s.appToken}`;
+    if (!(isCatalogue && asApp) && req.headers.authorization !== `Bearer ${s.accessToken}`) {
       return send(res, 401, { error: { status: 401, message: 'The access token expired' } });
     }
+    if (isCatalogue) s.lastCatalogueAuth = asApp ? 'app' : 'user';
     const body = raw ? JSON.parse(raw) : {};
     const deviceId = url.searchParams.get('device_id');
 

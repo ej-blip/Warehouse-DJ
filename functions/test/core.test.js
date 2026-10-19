@@ -164,3 +164,35 @@ test('public state shows queued songs only and publishes only on visible change'
   pub = core.buildPublicState(c, settings, T0 + 20000);
   assert.equal(core.shouldPublish(c, pub, T0 + 20000).publish, true);
 });
+
+test('outside music hours the iPads see nothing about what is or was playing', () => {
+  const c = core.emptyCore();
+  core.applyObservation(c, observe(T0, 'a'));
+  core.applyObservation(c, observe(T0 + 3 * MIN, 'b'));
+  core.reserve(c, entry('r1', 'c'));
+  core.confirm(c, 'r1');
+  const settings = { ...DEFAULT_SETTINGS };
+  const during = core.buildPublicState(c, settings, T0 + 4 * MIN);
+  assert.equal(during.music.on, true);
+  assert.equal(during.nowPlaying.name, 'Song b');
+  assert.equal(during.recent.length, 1);
+  assert.equal(during.upNext.length, 1);
+
+  const evening = Date.UTC(2026, 9, 19, 7, 0); // 6pm Melbourne
+  const after = core.buildPublicState(c, settings, evening);
+  assert.equal(after.music.on, false);
+  assert.equal(after.nowPlaying, null);
+  assert.deepEqual(after.recent, []);
+  assert.deepEqual(after.upNext, []);
+  assert.equal(after.speaker.status, 'unknown');
+});
+
+test('recently played starts empty each day', () => {
+  const c = core.emptyCore();
+  core.applyObservation(c, observe(T0, 'a'));
+  core.applyObservation(c, observe(T0 + 3 * MIN, 'b'));
+  core.prune(c, T0 + 4 * MIN);
+  assert.equal(c.recent.length, 1);
+  core.prune(c, T0 + 86400000); // same time tomorrow
+  assert.equal(c.recent.length, 0);
+});

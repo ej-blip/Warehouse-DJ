@@ -17,12 +17,13 @@ exports.api = onRequest(
   app,
 );
 
-// Every minute, 6:00am–7:59pm Melbourne time: sync what's playing and handle break
-// pauses. Sometimes waits up to ~50 seconds for a song to end, so it runs on a small
-// CPU share to stay inside the free allowance.
+// Every minute. During music hours it syncs what's playing and handles break pauses;
+// outside them it only keeps the iPads' banners current and never contacts Spotify.
+// It sometimes waits up to ~50 seconds for a song to end, so it runs on a small CPU
+// share to stay inside the free allowance.
 exports.tick = onSchedule(
   {
-    schedule: '* 6-19 * * *',
+    schedule: '* * * * *',
     timeZone: TIMEZONE,
     secrets: [SPOTIFY_CLIENT_SECRET],
     cpu: 'gcf_gen1',

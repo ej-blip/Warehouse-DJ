@@ -94,3 +94,24 @@ test('validateSettings accepts good input and rejects bad input', () => {
   assert.ok(validateSettings(settings, { autoPause: 'yes' }).errors.length);
   assert.deepEqual(validateSettings(settings, { days: [5, 1, 1] }).settings.days, [1, 5]);
 });
+
+test('music hours: on 8am–4pm on work days, with a readable message otherwise', () => {
+  const { musicStatus, formatDays } = require('../src/rules');
+  assert.equal(musicStatus(at(7, 59), settings).on, false);
+  assert.equal(musicStatus(at(8, 0), settings).on, true);
+  assert.equal(musicStatus(at(15, 59), settings).on, true);
+  assert.equal(musicStatus(at(16, 0), settings).on, false);
+  assert.equal(musicStatus(at(16, 0), settings).message, 'Music hours are 8:00am–4:00pm, Monday to Friday.');
+  assert.equal(musicStatus(at(12, 0) + 5 * 86400000, settings).on, false); // Saturday
+  assert.equal(formatDays([1, 3, 5]), 'Monday, Wednesday and Friday');
+  assert.equal(formatDays([1, 2, 3, 4, 5, 6, 7]), 'every day');
+});
+
+test('queueing outside music hours is refused, and queueing hours must sit inside music hours', () => {
+  const core = emptyCore();
+  const wide = { ...settings, open: '07:00', close: '18:00' };
+  assert.equal(checkQueueRequest({ nowMs: at(7, 30), settings: wide, device, track: track('a'), core }).code, 'music_off');
+  assert.match(validateSettings(settings, { open: '07:00' }).errors.join(' '), /inside music hours/);
+  assert.match(validateSettings(settings, { musicStart: '17:00' }).errors.join(' '), /start before they end/);
+  assert.equal(validateSettings(settings, { musicStart: '07:00', open: '07:30' }).settings.open, '07:30');
+});

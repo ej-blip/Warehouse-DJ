@@ -24,8 +24,14 @@
   </header>
 
   <div id="not-set-up" class="center-screen" hidden>
-    <h1>This iPad isn't set up yet</h1>
-    <p>Ask an admin to add it on the admin page, then open the link they give you on this iPad.</p>
+    <h1>Set up this device</h1>
+    <p>An admin enters their PIN here once. After that, this device can queue songs.</p>
+    <p class="banner warn" id="ios-hint" hidden>On an iPad or iPhone, add this page to the Home Screen first (Share → Add to Home Screen), then open it from that icon and set it up there. Setup done here in Safari won't carry over to the icon.</p>
+    <form id="setup-form" class="card" style="text-align:left">
+      <div class="field"><label for="setup-name">Name for this device</label><input id="setup-name" maxlength="40" placeholder="e.g. Packing 1" autocomplete="off" required></div>
+      <div class="field"><label for="setup-pin">Admin PIN</label><input id="setup-pin" type="password" inputmode="numeric" pattern="\d{6,8}" maxlength="8" autocomplete="off" required></div>
+      <button class="btn primary" type="submit" style="width:100%">Set up this device</button>
+    </form>
   </div>
 
   <main class="wrap" id="app" hidden>
@@ -61,7 +67,7 @@
     </div>
   </main>
 
-  <footer class="footer">Song info and artwork from Spotify.</footer>
+  <footer class="footer">Song info and artwork from Spotify. <a class="admin-link" href="/admin">Admin</a></footer>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

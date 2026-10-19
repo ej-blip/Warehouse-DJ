@@ -44,18 +44,52 @@ async function refreshMe() {
     renderQuota();
     renderBanners();
   } catch (err) {
-    if (err.status === 401) showNotSetUp();
+    if (err.status === 401) {
+      // Removed, or replaced by a new link: forget the old key and offer setup again.
+      storage.remove(TOKEN_KEY);
+      showNotSetUp();
+    }
   }
+}
+
+// iPhone/iPad Safari keeps a separate storage for Home Screen icons, so setup must
+// happen inside the icon, not in a Safari tab. (Android shares storage; no warning.)
+function inIosSafariTab() {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return ios && !navigator.standalone;
 }
 
 function showNotSetUp() {
   $('#app').hidden = true;
   $('#not-set-up').hidden = false;
+  $('#ios-hint').hidden = !inIosSafariTab();
+}
+
+function setupThisDevice() {
+  $('#setup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const button = e.submitter;
+    button.disabled = true;
+    try {
+      const r = await api('/devices/register', { method: 'POST', body: { name: $('#setup-name').value, pin: $('#setup-pin').value } });
+      storage.set(TOKEN_KEY, r.token);
+      toast(`This device is now "${r.device.name}".`, 'good');
+      // Drop any old ?t= link from the address so the stored key is used.
+      setTimeout(() => location.replace('/'), 800);
+    } catch (err) {
+      toast(err.message, 'bad');
+      button.disabled = false;
+    } finally {
+      $('#setup-pin').value = '';
+    }
+  });
 }
 
 // ---- rendering ------------------------------------------------------------
 
 const now = () => Date.now() + state.serverOffset;
+
+const musicOn = () => !(state.pub && state.pub.music && !state.pub.music.on);
 
 function renderBanners() {
   const box = $('#banners');
@@ -63,7 +97,9 @@ function renderBanners() {
   const items = [];
   if (state.conn !== 'live') items.push(['warn', 'Reconnecting… showing the last known info.']);
   if (state.device && !state.device.enabled) items.push(['bad', 'This iPad has been switched off by an admin.']);
-  if (p && !p.spotify.connected) {
+  if (!musicOn()) {
+    items.push(['info', p.music.message]);
+  } else if (p && !p.spotify.connected) {
     items.push(['bad', p.spotify.needsReauth ? "Spotify's login has expired. An admin needs to reconnect it on the admin page." : "Spotify isn't connected yet. An admin needs to connect it on the admin page."]);
   } else if (p && p.speaker.status === 'offline') {
     items.push(['bad', "The speaker isn't reachable. Open Spotify on the clock-in iPad and press play."]);
@@ -73,7 +109,9 @@ function renderBanners() {
     items.push(['bad', "Spotify won't let the app control the speaker device."]);
   }
   const sched = scheduleNow();
-  if (sched && !sched.open) items.push(['info', sched.message]);
+  if (musicOn() && sched && !sched.open) items.push(['info', sched.message]);
+  $('#search-input').disabled = !musicOn();
+  $('#search-input').placeholder = musicOn() ? 'Search songs or artists' : 'Search opens during music hours';
   box.replaceChildren(...items.map(([kind, text]) => el('div', { class: `banner ${kind}` }, text)));
 }
 
@@ -113,7 +151,7 @@ function renderNow() {
   }, `👍 ${np ? np.likes : ''}`.trim());
 
   if (!np) {
-    box.replaceChildren(el('div', { class: 'now' }, el('div', { class: 'empty' }, 'Nothing playing right now.'), el('div', { class: 'controls' }, playPause, skip, like)));
+    box.replaceChildren(el('div', { class: 'now' }, el('div', { class: 'empty' }, musicOn() ? 'Nothing playing right now.' : "Music's off outside music hours."), el('div', { class: 'controls' }, playPause, skip, like)));
     return;
   }
 
@@ -144,7 +182,7 @@ function fromPlaylistText() {
 }
 
 function canControl() {
-  return state.device && state.device.enabled && state.pub && state.pub.spotify.connected;
+  return state.device && state.device.enabled && state.pub && state.pub.spotify.connected && musicOn();
 }
 
 function tickProgress() {
@@ -169,7 +207,7 @@ function renderUpNext() {
     ));
   box.replaceChildren(
     rows.length ? el('ul', { class: 'list' }, rows) : el('div', { class: 'empty' }, 'No requested songs yet.'),
-    el('p', { class: 'hint' }, rows.length ? `Then back to ${then || 'the playlist'}.` : `Playing ${then || 'the playlist'} until someone adds a song.`),
+    musicOn() ? el('p', { class: 'hint' }, rows.length ? `Then back to ${then || 'the playlist'}.` : `Playing ${then || 'the playlist'} until someone adds a song.`) : null,
   );
 }
 
@@ -197,7 +235,7 @@ function renderQuota() {
   const sched = scheduleNow();
   const pips = el('div', { class: 'pips', 'aria-hidden': 'true' }, Array.from({ length: q.limit }, (_, i) => el('span', { class: `pip${i < q.remaining ? ' full' : ''}` })));
   let note;
-  if (sched && !sched.open) note = 'Queueing is closed right now';
+  if (!musicOn() || (sched && !sched.open)) note = 'Queueing is closed right now';
   else if (q.remaining > 0) note = `This iPad can add ${q.remaining} more ${q.remaining === 1 ? 'song' : 'songs'}`;
   else note = `Next song available at ${clockAt(q.nextAt)}`;
   box.replaceChildren(
@@ -347,6 +385,7 @@ function setupSearch() {
 // ---- start ----------------------------------------------------------------
 
 async function start() {
+  setupThisDevice();
   state.token = readToken();
   if (!state.token) {
     showNotSetUp();

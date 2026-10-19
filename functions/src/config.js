@@ -33,7 +33,11 @@ const FAVOURITES_PLAYLIST_NAME = 'Warehouse Favourites';
 const FAVOURITES_MAX_TRACKS = 100;
 
 const DEFAULT_SETTINGS = Object.freeze({
-  days: [1, 2, 3, 4, 5], // ISO weekdays, 1 = Monday
+  days: [1, 2, 3, 4, 5], // work days (ISO weekdays, 1 = Monday)
+  // Outside music hours the app doesn't look at Spotify at all, and shows nothing.
+  musicStart: '08:00',
+  musicEnd: '16:00',
+  // Queueing hours sit inside music hours.
   open: '09:20',
   close: '16:00',
   breaks: [

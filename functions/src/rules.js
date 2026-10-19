@@ -9,6 +9,30 @@ const { localParts, parseClock, formatClock, msAtLocalMinute } = require('./time
 const HOUR = 3600000;
 const MINUTE = 60000;
 
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// [1,2,3,4,5] -> "Monday to Friday"; [1,3,5] -> "Monday, Wednesday and Friday"
+function formatDays(days) {
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 7) return 'every day';
+  const consecutive = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
+  if (consecutive && sorted.length > 2) return `${DAY_NAMES[sorted[0] - 1]} to ${DAY_NAMES[sorted[sorted.length - 1] - 1]}`;
+  const names = sorted.map((d) => DAY_NAMES[d - 1]);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || 'no days';
+}
+
+// Music hours: the only time the app looks at Spotify or shows what's playing.
+function musicStatus(nowMs, settings) {
+  const lp = localParts(nowMs);
+  const start = parseClock(settings.musicStart);
+  const end = parseClock(settings.musicEnd);
+  const on = settings.days.includes(lp.weekday) && lp.minutesOfDay >= start && lp.minutesOfDay < end;
+  return {
+    on,
+    message: on ? '' : `Music hours are ${formatClock(start)}–${formatClock(end)}, ${formatDays(settings.days)}.`,
+  };
+}
+
 function scheduleStatus(nowMs, settings) {
   const lp = localParts(nowMs);
   const open = parseClock(settings.open);
@@ -86,6 +110,8 @@ function checkQueueRequest({ nowMs, settings, device, track, core }) {
   if (!device.enabled) {
     return { ok: false, code: 'device_off', message: 'This iPad has been switched off by an admin.' };
   }
+  const music = musicStatus(nowMs, settings);
+  if (!music.on) return { ok: false, code: 'music_off', message: music.message };
   const schedule = scheduleStatus(nowMs, settings);
   if (!schedule.open) {
     return { ok: false, code: 'closed', message: schedule.message, retryAt: schedule.until };
@@ -116,7 +142,7 @@ function checkQueueRequest({ nowMs, settings, device, track, core }) {
 // ---- settings validation -------------------------------------------------
 
 const EDITABLE = [
-  'days', 'open', 'close', 'breaks', 'autoPause', 'autoResume', 'songsPerWindow', 'windowMinutes',
+  'days', 'musicStart', 'musicEnd', 'open', 'close', 'breaks', 'autoPause', 'autoResume', 'songsPerWindow', 'windowMinutes',
   'queueCap', 'maxTrackMinutes', 'noRepeatHours', 'allowExplicit', 'speakerDeviceName',
 ];
 
@@ -140,13 +166,18 @@ function validateSettings(current, patch) {
     if (!days || days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) errors.push('Pick valid days.');
     else next.days = days;
   }
-  for (const key of ['open', 'close']) {
+  const clockLabels = { musicStart: 'Music start', musicEnd: 'Music end', open: 'Queueing opening', close: 'Queueing closing' };
+  for (const key of Object.keys(clockLabels)) {
     if (has(key)) {
-      if (parseClock(patch[key]) === null) errors.push(`${key === 'open' ? 'Opening' : 'Closing'} time must look like 09:20.`);
+      if (parseClock(patch[key]) === null) errors.push(`${clockLabels[key]} time must look like 09:20.`);
       else next[key] = normaliseClock(patch[key]);
     }
   }
+  if (parseClock(next.musicStart) >= parseClock(next.musicEnd)) errors.push('Music hours must start before they end.');
   if (parseClock(next.open) >= parseClock(next.close)) errors.push('Queueing must open before it closes.');
+  if (parseClock(next.open) < parseClock(next.musicStart) || parseClock(next.close) > parseClock(next.musicEnd)) {
+    errors.push('Queueing hours must sit inside music hours.');
+  }
 
   if (has('breaks')) {
     if (!Array.isArray(patch.breaks) || patch.breaks.length > 8) {
@@ -206,6 +237,8 @@ function normaliseClock(hhmm) {
 }
 
 module.exports = {
+  formatDays,
+  musicStatus,
   scheduleStatus,
   deviceQuota,
   trackBlock,

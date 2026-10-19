@@ -66,9 +66,30 @@ async function markDisconnected(err) {
   });
 }
 
+function musicOn(settings) {
+  return rules.musicStatus(Date.now(), settings).on;
+}
+
+// Outside music hours: forget what was playing and publish the "music's off" state,
+// without asking Spotify anything.
+async function goOffHours(settings) {
+  const now = Date.now();
+  const c = await store.readCore();
+  const pub = core.buildPublicState(c, settings, now);
+  if (!c.current && !c.playback && !core.shouldPublish(c, pub, now).publish) return;
+  await store.mutateCore((c2) => {
+    c2.current = null;
+    c2.playback = null;
+  });
+}
+
 // Read Spotify's playback state into private/core and public/state.
 async function sync({ deep = false } = {}) {
   const settings = await store.getSettings();
+  if (!musicOn(settings)) {
+    await goOffHours(settings);
+    return { obs: null, offHours: true, trackChanged: false, resumedAfterLongPause: false };
+  }
   let obs;
   try {
     obs = await observe(settings);
@@ -134,8 +155,11 @@ async function startOrResume(settings, speaker) {
   await spotify.transfer(speaker.id, true);
 }
 
-async function control(action) {
+async function control(action, { admin = false } = {}) {
   const settings = await store.getSettings();
+  if (!admin && !musicOn(settings)) {
+    throw new UserError('music_off', rules.musicStatus(Date.now(), settings).message, 409);
+  }
   try {
     if (action === 'skip') {
       const allowed = await store.mutateCore((c, { now }) => {
@@ -304,6 +328,28 @@ async function like(device) {
 
 // ---- breaks -----------------------------------------------------------------
 
+// Pause whatever the account is playing, wherever it is. Returns that device, or null
+// if nothing was playing.
+async function pauseActive() {
+  const pb = await spotify.playback();
+  if (!(pb && pb.is_playing && pb.device)) return null;
+  await ignoreAlready(() => spotify.pause(pb.device.id));
+  return { id: pb.device.id, name: pb.device.name };
+}
+
+// Start music again on the device that was paused (or the speaker, if that one's gone).
+async function resumeOn(settings, device) {
+  const devices = await spotify.devices();
+  const target =
+    devices.find((d) => device && d.id === device.id) ||
+    devices.find((d) => device && sameName(d.name, device.name)) ||
+    (await findSpeaker(settings));
+  if (!target) return false;
+  const pb = await spotify.playback();
+  if (!(pb && pb.is_playing)) await ignoreAlready(() => spotify.play(target.id));
+  return true;
+}
+
 // Pause when a break starts; resume when it ends, but only music we paused ourselves,
 // so a deliberate stop before the break stays stopped.
 async function handleBreaks(settings, nowMs) {
@@ -319,24 +365,19 @@ async function handleBreaks(settings, nowMs) {
     const sinceEnd = lp.minutesOfDay - end;
 
     if (settings.autoPause && sinceStart >= 0 && sinceStart < 3 && sinceEnd < 0 && state.key !== key) {
-      const pb = await spotify.playback();
-      const playing = Boolean(pb && pb.is_playing && isOnSpeaker(pb, settings));
-      if (playing) await spotify.pause(pb.device.id);
+      const paused = await pauseActive();
       await store.mutateCore((c) => {
-        c.breakState = { key, paused: playing, resumed: false };
+        c.breakState = { key, paused: Boolean(paused), resumed: false, device: paused };
       }, { publish: false });
-      logger.info('Break started', { key, paused: playing });
-      return playing ? 'paused' : 'nothing_playing';
+      logger.info('Break started', { key, paused: paused ? paused.name : null });
+      return paused ? 'paused' : 'nothing_playing';
     }
 
     if (settings.autoResume && sinceEnd >= 0 && sinceEnd < 5 && state.key === key && state.paused && !state.resumed) {
-      const speaker = await findSpeaker(settings);
-      if (!speaker) {
+      if (!(await resumeOn(settings, state.device))) {
         logger.info('Break over but the speaker is offline; will retry', { key });
         return 'speaker_offline';
       }
-      const pb = await spotify.playback();
-      if (!(pb && pb.is_playing)) await ignoreAlready(() => spotify.play(speaker.id));
       await store.mutateCore((c) => {
         c.breakState = { ...c.breakState, resumed: true };
       }, { publish: false });
@@ -347,8 +388,43 @@ async function handleBreaks(settings, nowMs) {
   return null;
 }
 
-// Runs every minute from 6am to 8pm Melbourne time.
+// The admin page's "Test break" button: the same pause and resume a real break uses,
+// with a short break in between.
+async function testBreak(seconds) {
+  const settings = await store.getSettings();
+  let paused;
+  try {
+    paused = await pauseActive();
+  } catch (err) {
+    throw toUserError(err);
+  }
+  if (!paused) return { paused: false, resumed: false, message: 'Nothing was playing, so there was nothing to pause.' };
+  await sync().catch(() => null);
+  await sleep(seconds * 1000);
+  let resumed;
+  try {
+    resumed = await resumeOn(settings, paused);
+  } catch (err) {
+    throw toUserError(err);
+  }
+  await sleep(800);
+  await sync().catch(() => null);
+  return {
+    paused: true,
+    resumed,
+    message: resumed
+      ? `Paused ${paused.name} for ${seconds} seconds, then started it again.`
+      : `Paused ${paused.name}, but couldn't start it again because it isn't reachable.`,
+  };
+}
+
+// Runs every minute. Outside music hours it only keeps the iPads' banners current.
 async function tick() {
+  const settings = await store.getSettings();
+  if (!musicOn(settings)) {
+    await goOffHours(settings);
+    return;
+  }
   const login = await spotify.loginStatus();
   if (!login.connected) {
     // Still publish, so the iPads' schedule banner stays current.
@@ -357,7 +433,6 @@ async function tick() {
     });
     return;
   }
-  const settings = await store.getSettings();
   try {
     await handleBreaks(settings, Date.now());
   } catch (err) {
@@ -368,7 +443,7 @@ async function tick() {
   const first = await sync({ deep });
   // If the song ends within this minute, wait for it so the iPads update right away.
   const o = first.obs;
-  if (o.playing && o.item) {
+  if (o && o.playing && o.item) {
     const remaining = o.item.durationMs - o.progressMs - (Date.now() - o.at);
     if (remaining > 0 && remaining < 50000) {
       await sleep(remaining + 1500);
@@ -388,5 +463,6 @@ module.exports = {
   queueTrack,
   like,
   handleBreaks,
+  testBreak,
   tick,
 };

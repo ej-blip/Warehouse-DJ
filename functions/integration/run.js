@@ -107,7 +107,7 @@ test('settings: validation, speaker choice, and an always-open schedule for test
   assert.equal(bad.status, 400);
   const ok = await call('PUT', '/api/admin/settings', {
     admin: ownerToken,
-    body: { days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '23:59', breaks: [], speakerDeviceName: 'Clock-in iPad' },
+    body: { days: [1, 2, 3, 4, 5, 6, 7], musicStart: '00:00', musicEnd: '23:59', open: '00:00', close: '23:59', breaks: [], speakerDeviceName: 'Clock-in iPad' },
   });
   assert.equal(ok.status, 200);
   const speakers = await call('GET', '/api/admin/speakers', { admin: ownerToken });
@@ -145,6 +145,8 @@ test('search results are capped at 10 and flag songs that break the rules', asyn
   const long = r.body.tracks.find((t) => t.name === 'Song Long');
   assert.equal(long.blocked.code, 'too_long');
   assert.equal(r.body.tracks.find((t) => t.name === 'Song A').blocked, null);
+  // Searched as the app, not the host account, so results aren't personalised.
+  assert.equal(fake.state.lastCatalogueAuth, 'app');
 });
 
 test('queueing enforces 3 songs per iPad, no duplicates, and fills Up Next', async () => {
@@ -252,6 +254,72 @@ test('weekly favourites: liked songs first, then queued ones', async () => {
   assert.equal(again.body.playlistId, r.body.playlistId);
   const preview = await call('GET', '/api/admin/favourites', { admin: ownerToken });
   assert.equal(preview.body.thisWeek.top[0].likes, 2);
+});
+
+test('an iPad can be set up on the device itself with an admin PIN', async () => {
+  const wrong = await call('POST', '/api/devices/register', { body: { name: 'Packing 2', pin: '999999' } });
+  assert.equal(wrong.status, 401);
+  const ok = await call('POST', '/api/devices/register', { body: { name: 'Packing 2', pin: '654321' } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.device.name, 'Packing 2');
+  const me = await call('GET', '/api/me', { device: ok.body.token });
+  assert.equal(me.body.device.name, 'Packing 2');
+  const overview = await call('GET', '/api/admin/overview', { admin: ownerToken });
+  const listed = overview.body.devices.find((d) => d.name === 'Packing 2');
+  assert.equal(listed.via, 'setup');
+  assert.equal(overview.body.devices.find((d) => d.name === 'Packing 1').via, 'link');
+});
+
+test('"Test a break" pauses, waits, and starts the music again', async () => {
+  fake.state.player.isPlaying = true;
+  const r = await call('POST', '/api/admin/test-break', { admin: ownerToken, body: { seconds: 1 } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.paused, true);
+  assert.equal(r.body.resumed, true);
+  assert.equal(fake.state.player.isPlaying, true);
+  assert.ok(fake.state.calls.includes('PUT /v1/me/player/pause'));
+});
+
+test('a break pauses music even when it is playing on a device other than the chosen speaker', async () => {
+  fake.state.devices.push({ id: 'dev-laptop', name: 'Laptop', type: 'Computer', is_active: false, is_restricted: false, is_private_session: false });
+  fake.state.devices.forEach((d) => { d.is_active = d.id === 'dev-laptop'; });
+  fake.state.player.isPlaying = true;
+  const settings = { ...(await mods.store.getSettings({ fresh: true })), breaks: [{ start: '13:20', minutes: 40 }] };
+  const at = (h, m) => Date.UTC(2026, 9, 19, h, m) - 11 * 3600000;
+  assert.equal(await mods.playback.handleBreaks(settings, at(13, 20)), 'paused');
+  assert.equal(fake.state.player.isPlaying, false);
+  assert.equal(await mods.playback.handleBreaks(settings, at(14, 0)), 'resumed');
+  assert.equal(fake.state.player.isPlaying, true);
+  assert.equal(fake.state.devices.find((d) => d.is_active).id, 'dev-laptop'); // resumed where it was
+  fake.state.devices.pop();
+  fake.state.devices[0].is_active = true;
+});
+
+test('outside music hours the app leaves Spotify alone and the iPads see nothing', async () => {
+  const { localParts } = require('../src/time');
+  const today = localParts(Date.now()).weekday;
+  const otherDays = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== today);
+  assert.equal((await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { days: otherDays } })).status, 200);
+  await new Promise((r) => setTimeout(r, 50));
+
+  const callsBefore = fake.state.calls.length;
+  const res = await mods.playback.sync();
+  assert.equal(res.offHours, true);
+  await mods.playback.tick();
+  assert.equal(fake.state.calls.length, callsBefore, 'no Spotify calls outside music hours');
+
+  const pub = await publicState();
+  assert.equal(pub.music.on, false);
+  assert.equal(pub.nowPlaying, null);
+  assert.deepEqual(pub.recent, []);
+  assert.equal((await call('POST', '/api/play', { device: ipad1, body: {} })).body.error, 'music_off');
+  assert.equal((await call('GET', '/api/search?q=song', { device: ipad1 })).body.error, 'music_off');
+  // Admins can still control the music.
+  assert.equal((await call('POST', '/api/admin/control', { admin: ownerToken, body: { action: 'pause' } })).status, 200);
+
+  assert.equal((await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { days: [1, 2, 3, 4, 5, 6, 7] } })).status, 200);
+  await call('POST', '/api/admin/control', { admin: ownerToken, body: { action: 'play' } });
+  assert.equal((await publicState()).music.on, true);
 });
 
 test('switched-off iPads cannot queue', async () => {

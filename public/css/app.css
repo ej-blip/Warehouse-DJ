@@ -188,5 +188,7 @@ img { display: block; }
 .toast.bad { border-color: var(--bad); }
 
 .footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px var(--gap) 24px; }
+.admin-link { color: var(--muted); margin-left: 12px; padding: 8px; text-decoration: none; border-bottom: 1px dotted var(--muted); }
+.search input:disabled { opacity: 0.5; }
 .center-screen { max-width: 520px; margin: 14vh auto; text-align: center; padding: var(--gap); }
 .center-screen h1 { font-size: 26px; }

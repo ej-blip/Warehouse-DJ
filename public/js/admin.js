@@ -4,6 +4,9 @@
 import { el, $, art, toast, dateAt, ago, artistLine, api, storage, watchDoc } from './common.js';
 
 const SESSION_KEY = 'wdj.adminSession';
+const DEVICE_TOKEN_KEY = 'wdj.deviceToken';
+// On a shared worker iPad, admin mode signs itself out after this long untouched.
+const SHARED_DEVICE_IDLE_MS = 5 * 60000;
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY = 86400000;
 
@@ -164,6 +167,7 @@ function renderOverview() {
   renderRules();
   renderDevices();
   renderAdmins();
+  $('#site-address').textContent = s.overview.siteUrl.replace(/^https?:\/\//, '');
 }
 
 function renderBanners() {
@@ -320,6 +324,8 @@ function renderRules() {
     ...DAY_NAMES.map((name, i) =>
       el('label', {}, el('input', { type: 'checkbox', value: i + 1, checked: st.days.includes(i + 1) }), name)),
   );
+  $('#musicStart').value = st.musicStart;
+  $('#musicEnd').value = st.musicEnd;
   $('#open').value = st.open;
   $('#close').value = st.close;
   $('#breaks').replaceChildren(...st.breaks.map(breakRow));
@@ -331,6 +337,8 @@ function readRules() {
   const num = (id) => Number($(`#${id}`).value);
   return {
     days: [...document.querySelectorAll('#days input:checked')].map((c) => Number(c.value)),
+    musicStart: $('#musicStart').value,
+    musicEnd: $('#musicEnd').value,
     open: $('#open').value,
     close: $('#close').value,
     breaks: [...document.querySelectorAll('#breaks .breakrow')].map((r) => ({ start: r.querySelector('.b-start').value, minutes: Number(r.querySelector('.b-min').value) })),
@@ -355,11 +363,12 @@ function renderDevices() {
           el('li', { class: 'row' },
             el('div', { class: 'meta' },
               el('div', { class: 'name' }, d.name),
-              el('div', { class: 'sub' }, `${d.enabled ? 'On' : 'Switched off'} · last seen ${ago(d.lastSeenAt)}`),
+              el('div', { class: 'sub' }, `${d.enabled ? 'On' : 'Switched off'} · ${d.via === 'setup' ? 'set up on the device' : 'test link'} · last seen ${ago(d.lastSeenAt)}`),
             ),
             el('button', { class: 'btn small', onclick: (e) => renameDevice(e.currentTarget, d) }, 'Rename'),
             el('button', { class: 'btn small', onclick: (e) => toggleDevice(e.currentTarget, d) }, d.enabled ? 'Switch off' : 'Switch on'),
-            el('button', { class: 'btn small', onclick: (e) => newLink(e.currentTarget, d) }, 'New link'),
+            // Devices set up on themselves have no link; a new one would lock them out.
+            d.via === 'setup' ? null : el('button', { class: 'btn small', onclick: (e) => newLink(e.currentTarget, d) }, 'New link'),
             el('button', { class: 'btn small danger', onclick: (e) => removeDevice(e.currentTarget, d) }, 'Remove'),
           ))
       : [el('li', { class: 'empty' }, 'No iPads yet. Add one below.')]),
@@ -508,6 +517,13 @@ function wireMain() {
   });
 
   $('#add-break').addEventListener('click', () => $('#breaks').append(breakRow()));
+  $('#test-break').addEventListener('click', async (e) => {
+    const status = $('#test-break-status');
+    const before = status.textContent;
+    status.textContent = 'Testing: paused, starting again in 15 seconds…';
+    const r = await act(e.currentTarget, () => adminApi('/test-break', { method: 'POST', body: { seconds: 15 } }), (res) => res.message);
+    status.textContent = r ? r.message : before;
+  });
   $('#rules').addEventListener('submit', (e) => {
     e.preventDefault();
     act(e.submitter, () => saveSettings(readRules(), 'Rules saved.'));
@@ -538,10 +554,24 @@ function wireMain() {
   });
 }
 
+// Admin mode on a worker iPad shouldn't outlast the admin standing in front of it.
+function watchIdleOnSharedDevice() {
+  if (!storage.get(DEVICE_TOKEN_KEY)) return;
+  let last = Date.now();
+  for (const type of ['pointerdown', 'keydown', 'scroll']) addEventListener(type, () => { last = Date.now(); }, { passive: true });
+  setInterval(async () => {
+    if (!s.token || Date.now() - last < SHARED_DEVICE_IDLE_MS) return;
+    await adminApi('/logout', { method: 'POST', body: {} }).catch(() => null);
+    storage.remove(SESSION_KEY);
+    location.replace('/');
+  }, 30000);
+}
+
 function start() {
   handleSpotifyReturn();
   wireSignIn();
   wireMain();
+  watchIdleOnSharedDevice();
   if (s.token) enterMain();
   else showSignIn();
 }

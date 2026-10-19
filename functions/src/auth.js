@@ -1,7 +1,9 @@
 'use strict';
 
 // Who is allowed to do what:
-// - each iPad has its own secret link (token "<id>.<secret>"); only a hash is stored.
+// - each iPad has its own secret token ("<id>.<secret>"); only a hash is stored. It's
+//   either created on the iPad itself by an admin entering their PIN there (kept in that
+//   iPad's storage, never shown), or handed out as a link for testing.
 // - admins sign in with a personal PIN and get a 12-hour session.
 // - the setup code (a Firebase secret) creates the first admin and can reset the owner's PIN.
 
@@ -34,10 +36,11 @@ const DEVICE_CACHE_MS = 30000;
 const LAST_SEEN_EVERY_MS = 5 * 60000;
 const deviceCache = new Map();
 
-async function createDevice(name) {
+// via: 'setup' (set up on the device itself) or 'link' (a link, for testing)
+async function createDevice(name, { via = 'link' } = {}) {
   const id = crypto.randomBytes(5).toString('hex');
   const secret = randomToken(24);
-  const device = { name: cleanName(name, 'iPad'), secretHash: sha256(secret), enabled: true, createdAt: Date.now(), lastSeenAt: null };
+  const device = { name: cleanName(name, 'iPad'), secretHash: sha256(secret), via, enabled: true, createdAt: Date.now(), lastSeenAt: null };
   await db.doc(`devices/${id}`).set(device);
   return { id, name: device.name, token: `${id}.${secret}` };
 }
@@ -47,7 +50,7 @@ async function newDeviceLink(id) {
   const snap = await ref.get();
   if (!snap.exists) throw new UserError('not_found', 'That iPad no longer exists.', 404);
   const secret = randomToken(24);
-  await ref.update({ secretHash: sha256(secret) });
+  await ref.update({ secretHash: sha256(secret), via: 'link' });
   deviceCache.delete(id);
   return { id, name: snap.data().name, token: `${id}.${secret}` };
 }
@@ -71,8 +74,8 @@ async function deleteDevice(id) {
 async function listDevices() {
   const snap = await db.collection('devices').orderBy('createdAt').get();
   return snap.docs.map((d) => {
-    const { name, enabled, createdAt, lastSeenAt } = d.data();
-    return { id: d.id, name, enabled: enabled !== false, createdAt, lastSeenAt: lastSeenAt || null };
+    const { name, enabled, createdAt, lastSeenAt, via } = d.data();
+    return { id: d.id, name, via: via || 'link', enabled: enabled !== false, createdAt, lastSeenAt: lastSeenAt || null };
   });
 }
 

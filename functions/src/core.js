@@ -4,8 +4,8 @@
 // change to it can happen inside a single transaction. This module holds the pure
 // transitions on that document and the projection the iPads see (public/state).
 
-const { scheduleStatus } = require('./rules');
-const { weekKeyAt } = require('./time');
+const { scheduleStatus, musicStatus } = require('./rules');
+const { weekKeyAt, localParts } = require('./time');
 
 const DAY = 86400000;
 const MINUTE = 60000;
@@ -49,7 +49,9 @@ function prune(core, nowMs) {
     if (nowMs - t >= DAY) delete core.recentTracks[trackId];
   }
   core.pending = core.pending.filter((p) => nowMs - p.queuedAt < STALE_PENDING_MS);
-  core.recent = core.recent.slice(0, RECENT_PLAYED_KEPT);
+  // "Recently played" starts empty each day.
+  const today = localParts(nowMs).dateKey;
+  core.recent = core.recent.filter((r) => localParts(r.endedAt).dateKey === today).slice(0, RECENT_PLAYED_KEPT);
   const weekKey = weekKeyAt(nowMs);
   if (core.weekLikes.weekKey !== weekKey) core.weekLikes = { weekKey, by: {} };
 }
@@ -185,13 +187,16 @@ function addLike(core, trackId, deviceId) {
 // ---- what the iPads see ----------------------------------------------------
 
 function buildPublicState(core, settings, nowMs) {
-  const c = core.current;
-  const pb = core.playback;
+  const music = musicStatus(nowMs, settings);
+  // Outside music hours the iPads show nothing about what's playing.
+  const c = music.on ? core.current : null;
+  const pb = music.on ? core.playback : null;
   const likedBy = c ? core.weekLikes.by[c.id] || [] : [];
   const base = settings.basePlaylist;
   return {
+    music,
     spotify: { connected: core.spotify.connected, needsReauth: core.spotify.needsReauth },
-    speaker: { status: core.speaker.status, name: core.speaker.name || settings.speakerDeviceName || '' },
+    speaker: { status: music.on ? core.speaker.status : 'unknown', name: core.speaker.name || settings.speakerDeviceName || '' },
     nowPlaying: c && pb
       ? {
           trackId: c.id,
@@ -219,7 +224,7 @@ function buildPublicState(core, settings, nowMs) {
           shuffle: pb.shuffle,
         }
       : null,
-    upNext: core.pending
+    upNext: (music.on ? core.pending : [])
       .filter((p) => p.state === 'queued')
       .map((p) => ({
         id: p.id,
@@ -233,7 +238,7 @@ function buildPublicState(core, settings, nowMs) {
         deviceName: p.deviceName,
         queuedAt: p.queuedAt,
       })),
-    recent: core.recent.slice(0, 5),
+    recent: music.on ? core.recent.slice(0, 5) : [],
     schedule: scheduleStatus(nowMs, settings),
     updatedAt: nowMs,
   };

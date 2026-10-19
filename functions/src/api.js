@@ -74,6 +74,8 @@ app.get('/api/me', requireDevice, wrap(async (req, res) => {
 }));
 
 app.get('/api/search', requireDevice, requireEnabled, searchLimit, wrap(async (req, res) => {
+  const music = rules.musicStatus(Date.now(), await store.getSettings());
+  if (!music.on) throw new UserError('music_off', music.message, 409);
   const q = String(req.query.q || '').trim();
   const offset = Math.min(Math.max(parseInt(req.query.offset, 10) || 0, 0), 200);
   if (!q) return res.json({ tracks: [], offset, total: 0, more: false });
@@ -115,6 +117,22 @@ for (const action of ['play', 'pause', 'skip']) {
 
 app.post('/api/like', requireDevice, requireEnabled, wrap(async (req, res) => {
   res.json({ ok: true, ...(await playback.like(req.device)) });
+}));
+
+// Set up the device this request comes from: an admin types their PIN on the iPad
+// itself. The token goes straight into that iPad's storage and is never shown.
+app.post('/api/devices/register', wrap(async (req, res) => {
+  const ip = clientIp(req);
+  await auth.guardCheck(ip);
+  const pin = String((req.body && req.body.pin) || '');
+  const admin = /^\d{6,8}$/.test(pin) ? await auth.findAdminByPin(pin, await auth.listAdmins()) : null;
+  if (!admin) {
+    await auth.guardFail(ip);
+    throw new UserError('bad_pin', "That PIN isn't right.", 401);
+  }
+  const device = await auth.createDevice(req.body.name, { via: 'setup' });
+  logger.info('Device set up on the device', { device: device.name, by: admin.name });
+  res.json({ token: device.token, device: { id: device.id, name: device.name } });
 }));
 
 // ---- admin sign-in --------------------------------------------------------
@@ -231,8 +249,13 @@ app.post('/api/admin/control', requireAdmin, wrap(async (req, res) => {
   if (action === 'loop') await playback.setLoop(Boolean(req.body.on));
   else if (action === 'shuffle') await playback.setShuffle(Boolean(req.body.on));
   else if (action === 'sync') await playback.sync({ deep: true }).catch((err) => { throw toUserError(err); });
-  else await playback.control(action);
+  else await playback.control(action, { admin: true });
   res.json({ ok: true });
+}));
+
+app.post('/api/admin/test-break', requireAdmin, wrap(async (req, res) => {
+  const seconds = Math.min(Math.max(parseInt(req.body && req.body.seconds, 10) || 15, 1), 40);
+  res.json(await playback.testBreak(seconds));
 }));
 
 app.get('/api/admin/playlists', requireAdmin, wrap(async (req, res) => {

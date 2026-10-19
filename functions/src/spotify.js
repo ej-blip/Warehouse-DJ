@@ -23,6 +23,7 @@ const EXPIRY_MARGIN_MS = 60000;
 const DAY = 86400000;
 
 let cachedToken = null; // { accessToken, expiresAt } for this instance
+let cachedAppToken = null; // same, for the app's own (no user) token
 let pausedUntil = 0; // set when Spotify answers 429
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -139,9 +140,20 @@ async function accessToken({ force = false } = {}) {
   return update.accessToken;
 }
 
+// A token for the app itself rather than the host account. Searches use it so results
+// aren't ranked by the host's own likes and listening history.
+async function appToken({ force = false } = {}) {
+  if (!force && cachedAppToken && cachedAppToken.expiresAt - Date.now() > EXPIRY_MARGIN_MS) return cachedAppToken.accessToken;
+  const r = await tokenRequest({ grant_type: 'client_credentials' });
+  if (!r.ok) throw new SpotifyError({ status: r.status, reason: r.data.error, message: 'Could not get an app token from Spotify.' });
+  cachedAppToken = { accessToken: r.data.access_token, expiresAt: Date.now() + r.data.expires_in * 1000 };
+  return cachedAppToken.accessToken;
+}
+
 // ---- requests --------------------------------------------------------------
 
-async function call(method, path, { query, body, token, retry = true } = {}) {
+// `as: 'app'` sends the request as the app instead of the host account.
+async function call(method, path, { query, body, token, as = 'user', retry = true } = {}) {
   if (Date.now() < pausedUntil) {
     const retryAfter = Math.ceil((pausedUntil - Date.now()) / 1000);
     throw new SpotifyError({ status: 429, reason: 'RATE_LIMITED', message: 'Spotify asked us to slow down.', retryAfter });
@@ -150,8 +162,8 @@ async function call(method, path, { query, body, token, retry = true } = {}) {
   for (const [k, v] of Object.entries(query || {})) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
-  const bearer = token || (await accessToken());
-  const again = () => call(method, path, { query, body, token, retry: false });
+  const bearer = token || (as === 'app' ? await appToken() : await accessToken());
+  const again = () => call(method, path, { query, body, token, as, retry: false });
 
   let res;
   try {
@@ -174,7 +186,8 @@ async function call(method, path, { query, body, token, retry = true } = {}) {
   }
 
   if (res.status === 401 && !token && retry) {
-    await accessToken({ force: true });
+    if (as === 'app') await appToken({ force: true });
+    else await accessToken({ force: true });
     return again();
   }
   if (res.status === 429) {
@@ -266,9 +279,10 @@ module.exports = {
   transfer: (deviceId, play) => call('PUT', '/me/player', { body: { device_ids: [deviceId], play } }),
   setRepeat: (state, deviceId) => call('PUT', '/me/player/repeat', { query: { state, device_id: deviceId } }),
   setShuffle: (on, deviceId) => call('PUT', '/me/player/shuffle', { query: { state: on ? 'true' : 'false', device_id: deviceId } }),
-  track: (id) => call('GET', `/tracks/${encodeURIComponent(id)}`, { query: { market } }),
-  searchTracks: (q, offset = 0) => call('GET', '/search', { query: { q, type: 'track', market, limit: SEARCH_PAGE_SIZE, offset } }),
-  searchPlaylists: (q, offset = 0) => call('GET', '/search', { query: { q, type: 'playlist', market, limit: SEARCH_PAGE_SIZE, offset } }),
+  // Catalogue lookups go out as the app, so nothing about the host account shapes them.
+  track: (id) => call('GET', `/tracks/${encodeURIComponent(id)}`, { query: { market }, as: 'app' }),
+  searchTracks: (q, offset = 0) => call('GET', '/search', { query: { q, type: 'track', market, limit: SEARCH_PAGE_SIZE, offset }, as: 'app' }),
+  searchPlaylists: (q, offset = 0) => call('GET', '/search', { query: { q, type: 'playlist', market, limit: SEARCH_PAGE_SIZE, offset }, as: 'app' }),
   myPlaylists: () => call('GET', '/me/playlists', { query: { limit: 50 } }),
   createPlaylist: (name, description) => call('POST', '/me/playlists', { body: { name, description, public: false } }),
   // Spotify renamed /tracks to /items in February 2026; the old path is refused in Development Mode.

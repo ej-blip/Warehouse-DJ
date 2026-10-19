@@ -2,8 +2,7 @@
 
 A shared music queue for the IND Technology warehouse. One Spotify Premium account plays through the warehouse speakers. Worker iPads search for songs, add them to the queue, play, pause, skip and 👍 songs. A small backend applies the rules (queueing hours, breaks, how many songs each iPad can add) before anything reaches Spotify.
 
-- **iPads:** `https://warehouse-dj-bd640.web.app` (each iPad gets its own link)
-- **Admin page:** `https://warehouse-dj-bd640.web.app/admin`
+- **Address:** `https://warehouse-dj-bd640.web.app`. Everyone uses this one address. Admins tap **Admin** at the very bottom of the page and sign in with their PIN (`/admin` also works directly).
 
 ## How it fits together
 
@@ -15,7 +14,9 @@ A shared music queue for the IND Technology warehouse. One Spotify Premium accou
 | Live state | One Firestore document with what's playing, what's next and whether queueing is open. Every iPad listens to it | Melbourne (`australia-southeast2`) |
 | Pages | Firebase Hosting | Google's CDN |
 
-The iPads never log in to Spotify. They can only read the live-state document, and every action goes through the backend. The backend checks Spotify once a minute from 6am to 8pm Melbourne time, and again the moment each song ends. Changes made by hand on the speaker iPad show up within a minute.
+The iPads never log in to Spotify. They can only read the live-state document, and every action goes through the backend. During music hours the backend checks Spotify once a minute, and again the moment each song ends, so changes made by hand on the speaker iPad show up within a minute. **Outside music hours it doesn't contact Spotify at all**, and the iPads show nothing about what's playing.
+
+Searches go to Spotify as the app itself, not as the host account, so results aren't shaped by the host's own likes and listening history.
 
 The backend runs in Sydney because Google's scheduler isn't offered in Melbourne.
 
@@ -25,9 +26,11 @@ All of these can be changed on the admin page and take effect within about 10 se
 
 | Rule | Default |
 |---|---|
-| Queueing days and hours | Monday–Friday, 9:20am–4:00pm (Melbourne time; daylight saving handled) |
+| Work days | Monday–Friday |
+| Music hours | 8:00am–4:00pm (Melbourne time; daylight saving handled). Outside these, nothing is shown or recorded |
+| Queueing hours | 9:20am–4:00pm (must sit inside music hours) |
 | Breaks | 10:20am for 20 minutes and 1:20pm for 40 minutes. Queueing is closed during breaks |
-| Pause at break start, resume at break end | On. It only resumes music it paused itself |
+| Pause at break start, resume at break end | On. It pauses whatever your account is playing, and only resumes music it paused itself. **Test a break** on the admin page tries it out in 15 seconds |
 | Songs per iPad | 3 every 30 minutes |
 | Most songs in the queue | 20 |
 | Longest song | 7 minutes |
@@ -127,14 +130,21 @@ To deploy updates later, run `firebase deploy` again.
 
 ### 9. Set up each worker iPad
 
-1. On the admin page, under **iPads**, type a name (e.g. *Packing 1*) and tap **Add iPad**. You get a link.
-2. Get the link onto that iPad (AirDrop, email or message), open it in **Safari**, then tap **Share → Add to Home Screen**.
-3. From then on, open Warehouse DJ from the Home Screen icon. It opens full screen.
+Do this on the iPad itself. There's no link to send around.
+
+1. On the iPad, open `https://warehouse-dj-bd640.web.app` in **Safari** and tap **Share → Add to Home Screen**.
+2. Open Warehouse DJ from the new Home Screen icon. It says **Set up this device**.
+   - **Set it up inside the icon, not in Safari.** iPads keep the icon's storage separate from Safari's, so setup done in a Safari tab doesn't carry over.
+3. Type a name (e.g. *Packing 1*) and an admin PIN, then tap **Set up this device**. The iPad now has its own private key, which never leaves it.
 4. Set **Auto-Lock** to **Never** and keep the iPad plugged in. To stop workers leaving the app, you can turn on **Guided Access** (**Settings → Accessibility → Guided Access**).
 
-Each link only works as that iPad. If one leaks or an iPad goes missing, use **New link** (the old one stops working), **Switch off** or **Remove**.
+**Android phones** (e.g. Samsung): open the address in **Chrome** and set it up straight away. Adding it to the home screen is optional, because Chrome shares its storage with the shortcut.
 
-To add more admins, the owner adds them under **Admins**, giving each person their own PIN.
+**Test links:** for testing, the admin page can still make a link for a device under **iPads → Or make a test link**. Anyone with a link can use it, so remove test links when you're done.
+
+If an iPad goes missing, use **Switch off** or **Remove** on the admin page. If one is reset, set it up again.
+
+To add more admins, the owner adds them under **Admins**, giving each person their own PIN. If an admin signs in on a worker iPad, admin mode signs itself out after 5 minutes of no use.
 
 ---
 
@@ -142,6 +152,7 @@ To add more admins, the owner adds them under **Admins**, giving each person the
 
 - **Queueing.** Workers search, tap **Add**, and the song joins the queue. Each iPad shows how many songs it has left and when its next one frees up, so nobody needs to keep checking.
 - **Breaks.** Queueing closes at 10:20am and 1:20pm. The music pauses and starts again at 10:40am and 2:00pm, and songs queued before the break are still there afterwards. If Spotify lost them because iOS closed the app, the backend adds them back when the music restarts.
+- **Music hours.** Before 8:00am and after 4:00pm, the iPads show a "Music hours" message and can't search, queue or control the music. Admins can still control it from the admin page. "Recently played" starts empty each morning.
 - **Admins** can also skip, loop or shuffle the playlist, change the starting playlist and change any rule.
 
 ### Weekly favourites
@@ -165,7 +176,8 @@ Since July 2026, Spotify ends app logins 6 months after you sign in, however oft
 | "The speaker isn't reachable…" | Open Spotify on the clock-in iPad and press play. |
 | "Spotify's login has expired" | Admin page → **Reconnect Spotify**. |
 | "…in a Private Session…" | In Spotify on the speaker iPad, turn off Private Session. |
-| "This iPad isn't set up yet" | Open that iPad's link again, or make a **New link** for it on the admin page. |
+| "Set up this device" | The iPad was removed or reset. Set it up again with an admin PIN (step 9). |
+| Music doesn't pause at a break | Tap **Test a break** on the admin page. If that works, check the break times and work days in **Rules**. |
 | "Reconnecting…" banner | The Wi-Fi dropped. It recovers by itself. |
 | A Spotify-made playlist won't start from the admin page | Spotify blocks some of its own playlists from apps. Start it in the Spotify app on the speaker iPad instead. |
 | Owner forgot their PIN | Admin sign-in → **Owner forgot their PIN?** → enter the setup code. |
@@ -203,7 +215,7 @@ Your personal account must keep Premium while it owns the developer app. Alterna
 firebase.json            Hosting, the /api rewrite, emulator ports
 firestore.rules          iPads may read public/state only
 functions/
-  index.js               api (HTTP), tick (every minute), weeklyFavourites (Sunday 8pm)
+  index.js               api (HTTP), tick (every minute; contacts Spotify only in music hours), weeklyFavourites (Sunday 8pm)
   src/config.js          region, time zone, Spotify client ID, default rules
   src/rules.js           the gatekeeper: schedule, quotas, song checks (pure functions)
   src/core.js            shared queue state and what the iPads see (pure functions)

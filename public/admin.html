@@ -14,7 +14,7 @@
 <body>
   <header class="topbar">
     <div class="brand">Warehouse <span>DJ</span> · Admin</div>
-    <div class="who"><span id="who"></span><button class="btn small" id="sign-out" hidden>Sign out</button></div>
+    <div class="who"><a class="btn small" href="/">← Player</a><span id="who"></span><button class="btn small" id="sign-out" hidden>Sign out</button></div>
   </header>
 
   <!-- First run: create the owner with the setup code. Also the forgotten-PIN reset. -->
@@ -87,9 +87,16 @@
         <section class="card">
           <h2>Rules</h2>
           <form id="rules">
-            <div class="label">Queueing days</div>
+            <div class="label">Work days</div>
             <div class="days" id="days"></div>
-            <div class="form-grid" style="margin-top:12px">
+            <h3>Music hours</h3>
+            <div class="form-grid">
+              <div class="field"><label for="musicStart">Music starts</label><input type="time" id="musicStart" required></div>
+              <div class="field"><label for="musicEnd">Music ends</label><input type="time" id="musicEnd" required></div>
+            </div>
+            <p class="hint">Outside these hours the app doesn't look at Spotify at all, and the iPads show nothing about what's playing.</p>
+            <h3>Queueing hours</h3>
+            <div class="form-grid">
               <div class="field"><label for="open">Queueing opens</label><input type="time" id="open" required></div>
               <div class="field"><label for="close">Queueing closes</label><input type="time" id="close" required></div>
             </div>
@@ -98,6 +105,10 @@
             <button class="btn small" type="button" id="add-break">Add a break</button>
             <label class="check"><input type="checkbox" id="autoPause"> Pause the music when a break starts</label>
             <label class="check"><input type="checkbox" id="autoResume"> Start it again when the break ends</label>
+            <div class="inline">
+              <button class="btn small" type="button" id="test-break">Test a break</button>
+              <span class="hint" id="test-break-status">Pauses whatever's playing, waits 15 seconds, then starts it again, using the same steps as a real break.</span>
+            </div>
             <h3>Limits</h3>
             <div class="form-grid">
               <div class="field"><label for="songsPerWindow">Songs per iPad</label><input type="number" id="songsPerWindow" min="1" max="20" required></div>
@@ -114,9 +125,18 @@
         <section class="card">
           <h2>iPads</h2>
           <ul class="list" id="devices"></ul>
-          <form class="inline" id="add-device" style="margin-top:12px">
-            <div class="field" style="flex:1"><label for="device-name">New iPad name</label><input id="device-name" maxlength="40" placeholder="e.g. Packing 1" required></div>
-            <button class="btn primary" type="submit">Add iPad</button>
+          <h3>Add an iPad</h3>
+          <ol class="hint">
+            <li>On the iPad, open <strong id="site-address"></strong> in Safari.</li>
+            <li>Tap Share → Add to Home Screen, then open it from the new icon.</li>
+            <li>Tap <strong>Set up this device</strong>, type a name and your PIN.</li>
+          </ol>
+          <p class="hint">On Android phones, open the address in Chrome and set it up straight away.</p>
+          <h3>Or make a test link</h3>
+          <p class="hint">Anyone with a link can use it, so keep links for testing and remove them afterwards.</p>
+          <form class="inline" id="add-device">
+            <div class="field" style="flex:1"><label for="device-name">Name</label><input id="device-name" maxlength="40" placeholder="e.g. Test phone" required></div>
+            <button class="btn" type="submit">Make link</button>
           </form>
           <div id="new-link" hidden style="margin-top:12px"></div>
         </section>
