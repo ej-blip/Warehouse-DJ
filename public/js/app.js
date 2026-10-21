@@ -398,7 +398,10 @@ const PLACEHOLDERS = {
 };
 
 function setMode(mode) {
-  if (mode === state.mode) return;
+  if (mode === state.mode) {
+    if (mode === 'playlists') closePlaylist();
+    return;
+  }
   state.mode = mode;
   state.searchSeq++; // ignore answers to searches from the old mode
   for (const b of document.querySelectorAll('#modes button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
@@ -464,10 +467,11 @@ function openPlaylist(p) {
   loadPlaylistSongs();
 }
 
+// Back to the list, fetched again so new weekly favourites show up.
 function closePlaylist() {
   state.openPlaylist = null;
   state.results = [];
-  renderPlaylists();
+  loadPlaylists();
   renderResults();
 }
 

@@ -68,8 +68,26 @@
           <h2>Playlists</h2>
           <p id="base-playlist" class="hint"></p>
           <h3>Warehouse playlists</h3>
-          <p class="hint">Everyone can open these on the iPads and add songs from them. Tap Play to make one the starting playlist.</p>
+          <p class="hint">Everyone can open these on the iPads and add songs from them. <b>Play</b> plays one now. <b>Start here</b> makes music start from it, on shuffle, when there's nothing to carry on from, such as first thing in the morning.</p>
           <ul class="list" id="warehouse-playlists"></ul>
+          <div id="archived-box" hidden>
+            <h3>Archived</h3>
+            <p class="hint">Older weekly favourites. The iPads don't show these, but they're still in your Spotify. Restore one to put it back.</p>
+            <ul class="list" id="archived-playlists"></ul>
+          </div>
+          <div id="pl-editor" class="editor" hidden>
+            <div class="playlist-head">
+              <button class="btn small" type="button" id="pl-editor-close">Done</button>
+              <div class="meta"><div class="name" id="pl-editor-name"></div><div class="hint" id="pl-editor-count"></div></div>
+            </div>
+            <ul class="list" id="pl-editor-songs"></ul>
+            <h3>Add songs</h3>
+            <form class="search" id="pl-editor-form">
+              <input id="pl-editor-search" type="search" placeholder="Search songs to add" autocomplete="off" enterkeyhint="search">
+              <button class="btn" type="submit">Search</button>
+            </form>
+            <ul class="list" id="pl-editor-results"></ul>
+          </div>
           <h3>Find more on Spotify</h3>
           <form class="search" id="pl-search-form">
             <input id="pl-search" type="search" placeholder="Search Spotify playlists" autocomplete="off" enterkeyhint="search">

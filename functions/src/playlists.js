@@ -1,10 +1,11 @@
 'use strict';
 
-// Warehouse playlists: Warehouse Favourites plus the ones admins add. Everyone can open
-// them and queue songs one at a time. The host's own playlists never appear here.
+// Warehouse playlists: the newest weekly favourites plus the ones admins add. Everyone
+// can open them and queue songs one at a time. The host's own playlists never appear here.
 
 const spotify = require('./spotify');
 const store = require('./store');
+const weekly = require('./weekly');
 const { UserError, SpotifyError, toUserError } = require('./errors');
 const { MAX_WAREHOUSE_PLAYLISTS } = require('./config');
 
@@ -14,23 +15,45 @@ const pageCache = new Map(); // `${id}:${offset}` -> { at, page }
 
 const blocked = (err) => err instanceof SpotifyError && (err.status === 403 || err.status === 404);
 
+const weeklyEntry = (p) => ({
+  id: p.playlistId,
+  uri: p.uri,
+  name: p.name,
+  owner: 'Weekly favourites',
+  imageUrl: null,
+  kind: 'weekly',
+  browsable: true,
+  trackCount: p.trackCount || null,
+  spotifyUrl: p.url || null,
+});
+
+// What the iPads list: weekly favourites, newest first, then the admin-added ones.
 function warehouseList(settings) {
-  const list = [];
-  const fav = settings.favourites;
-  if (fav && fav.playlistId) {
-    list.push({
-      id: fav.playlistId,
-      uri: fav.uri,
-      name: 'Warehouse Favourites',
-      owner: 'Rebuilt every week',
-      imageUrl: null,
-      kind: 'favourites',
-      browsable: true,
-      trackCount: fav.trackCount || null,
-    });
+  const start = weekly.startingPlaylist(settings);
+  return [
+    ...weekly.visible(settings.weeklyPlaylists).map(weeklyEntry),
+    ...(settings.warehousePlaylists || []).map((p) => ({ ...p, kind: 'saved' })),
+  ].map((p) => ({ ...p, starting: Boolean(start && start.id === p.id) }));
+}
+
+// The admin page also sees archived weekly playlists and which one music starts from.
+function adminList(settings) {
+  const start = weekly.startingPlaylist(settings);
+  return {
+    playlists: warehouseList(settings),
+    archived: weekly.archived(settings.weeklyPlaylists).map(weeklyEntry),
+    starting: start,
+    defaultPlaylistId: start && start.chosen ? start.id : null,
+  };
+}
+
+// Switch on the playlist music starts from, or pass null to go back to the newest weekly one.
+async function setDefault(id) {
+  const settings = await store.getSettings({ fresh: true });
+  if (id !== null && !warehouseList(settings).some((p) => p.id === id)) {
+    throw new UserError('not_found', "That playlist isn't on the warehouse list.", 404);
   }
-  for (const p of settings.warehousePlaylists || []) list.push({ ...p, kind: 'saved' });
-  return list;
+  await store.patchSettings({ defaultPlaylistId: id });
 }
 
 async function fetchPage(id, offset) {
@@ -79,7 +102,7 @@ async function add(playlist) {
   if (!PLAYLIST_ID.test(id)) throw new UserError('bad_playlist', "That isn't a playlist.");
   const settings = await store.getSettings({ fresh: true });
   const current = settings.warehousePlaylists || [];
-  if (current.some((p) => p.id === id) || (settings.favourites && settings.favourites.playlistId === id)) {
+  if (current.some((p) => p.id === id) || (settings.weeklyPlaylists || []).some((p) => p.playlistId === id)) {
     throw new UserError('already_added', "That playlist's already on the list.");
   }
   if (current.length >= MAX_WAREHOUSE_PLAYLISTS) {
@@ -92,6 +115,7 @@ async function add(playlist) {
     owner: String(playlist.owner || '').slice(0, 100),
     imageUrl: typeof playlist.imageUrl === 'string' && playlist.imageUrl.startsWith('https://') ? playlist.imageUrl : null,
     browsable: await canBrowse(id),
+    trackCount: Number.isInteger(playlist.trackCount) && playlist.trackCount >= 0 ? playlist.trackCount : null,
   };
   await store.patchSettings({ warehousePlaylists: [...current, entry] });
   return entry;
@@ -99,8 +123,11 @@ async function add(playlist) {
 
 async function remove(id) {
   const settings = await store.getSettings({ fresh: true });
-  await store.patchSettings({ warehousePlaylists: (settings.warehousePlaylists || []).filter((p) => p.id !== id) });
+  await store.patchSettings({
+    warehousePlaylists: (settings.warehousePlaylists || []).filter((p) => p.id !== id),
+    ...(settings.defaultPlaylistId === id ? { defaultPlaylistId: null } : {}),
+  });
   forget(id);
 }
 
-module.exports = { warehouseList, tracksFor, add, remove, forget };
+module.exports = { warehouseList, adminList, setDefault, tracksFor, add, remove, forget };

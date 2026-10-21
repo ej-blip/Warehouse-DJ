@@ -157,20 +157,26 @@ To add more admins, the owner adds them under **Admins**, giving each person the
 
 - **Queueing.** Workers search, tap **Add**, and the song joins the queue. Each iPad shows how many songs it has left and when its next one frees up, so nobody needs to keep checking.
 - **Search modes.** **Song** (the default) searches everything; **Artist** finds songs by an artist; **Genre** finds songs in a Spotify genre (e.g. *jazz rap*, *lo-fi*), most popular first. Spotify's genre names are its own, so try a couple of wordings.
-- **Playlists tab.** Shows the warehouse playlists: Warehouse Favourites plus any an admin added. Open one to add its songs one at a time (the usual limits apply). Your own Spotify playlists never appear anywhere in the app.
+- **Playlists tab.** Shows the warehouse playlists: the newest weekly favourites plus any an admin added. Open one to add its songs one at a time (the usual limits apply). Your own Spotify playlists never appear anywhere in the app.
 - **Breaks.** Queueing closes at 10:20am and 1:20pm. The music pauses and starts again at 10:40am and 2:00pm, and songs queued before the break are still there afterwards. If Spotify lost them because iOS closed the app, the backend adds them back when the music restarts.
 - **Music hours.** Before 8:00am and after 4:00pm, the iPads show a "Music hours" message and can't search, queue or control the music. Admins can still control it from the admin page. "Recently played" starts empty each morning.
 - **Admins** can also skip, loop or shuffle the playlist, change the starting playlist and change any rule.
+- **Pressing Play after a pause** carries on from the same song. When there's nothing to carry on from, such as first thing in the morning, music starts from the **starting playlist**, on shuffle from a random song.
 
 ### Weekly favourites
 
-Every **Sunday at 8pm** a private playlist called **Warehouse Favourites** in the host Spotify account is replaced with that week's songs:
+Every **Sunday at 8pm** a new private playlist is made in the host Spotify account, numbered and dated, for example **Warehouse Favourites #3 · 26 Oct – 1 Nov**:
 
-- It includes every song queued that week, plus any song that got a 👍 (including songs from the starting playlist).
+- It holds the songs queued or 👍 since the previous one was made, including 👍 songs from the starting playlist.
 - The most-liked songs come first, then the ones queued most often. It holds up to 100 songs.
-- If nothing was queued or liked that week, last week's playlist is left alone.
+- If nothing was queued or liked, no new playlist is made.
+- **Make a new one now** (admin page → Weekly favourites) makes the next one straight away instead of waiting for Sunday.
 
-On Monday, tap **Weekly favourites → Play it now** to start the shift with it. **Rebuild now** builds it straight away from the week so far.
+**Which playlist music starts from:** the newest weekly favourites, unless an admin switches on **☆ Start here** on another warehouse playlist. Switching it off goes back to the newest. **Play** on any playlist plays it now without changing that.
+
+**Archiving:** the iPads show the newest 4 weekly playlists. When a 5th is made, the oldest moves to **Archived** on the admin page: hidden from the iPads, still in your Spotify. **Restore** puts one back until you archive it again. The starting playlist is never archived automatically.
+
+**Editing:** admins tap **Songs** on a weekly playlist to see its songs, **Remove** any, and search to **Add** more. Nothing rebuilds a playlist once it's made, so edits stick. You can also edit them in the Spotify app, since they're normal playlists in your account. Removing a song doesn't stop it coming back in a later week if people queue it again.
 
 ### Every 6 months: reconnect Spotify
 
@@ -225,8 +231,8 @@ If a run fails with a "permission" error, the log names the missing role; add it
 1. Get the work Premium account.
 2. In the Spotify dashboard, open **User Management** and add the work account's email. Development Mode allows up to 5 users.
 3. On the speaker iPad, sign out of Spotify and sign in with the work account.
-4. On the admin page, tap **Reconnect Spotify** and log in with the work account. Then choose the speaker and a starting playlist again.
-5. Warehouse Favourites is recreated in the new account the next Sunday, or straight away with **Rebuild now**.
+4. On the admin page, tap **Reconnect Spotify** and log in with the work account. Then choose the speaker again.
+5. Weekly favourites start again in the new account the next Sunday, or straight away with **Make a new one now**. The old account's playlists stay in that account.
 
 Your personal account must keep Premium while it owns the developer app. Alternatively, create a new developer app under the work account, put its Client ID in `functions/src/config.js`, set its secret again (step 5) and redeploy.
 
@@ -254,7 +260,9 @@ functions/
   src/spotify.js         Spotify client: login, token refresh, retries, 429 handling
   src/auth.js            iPad links, admin PINs and sessions, lockout
   src/api.js             HTTP routes
-  src/favourites.js      weekly playlist
+  src/favourites.js      weekly favourites: making, archiving and editing them
+  src/weekly.js          weekly playlist names, archiving rules, starting playlist (pure functions)
+  src/playlists.js       warehouse playlists the iPads can open
   test/                  unit tests
   integration/           end-to-end test against the Firestore emulator and a fake Spotify
 public/

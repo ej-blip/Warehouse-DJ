@@ -6,6 +6,7 @@
 
 const { scheduleStatus, musicStatus } = require('./rules');
 const { weekKeyAt, localParts } = require('./time');
+const weekly = require('./weekly');
 
 const DAY = 86400000;
 const MINUTE = 60000;
@@ -192,7 +193,6 @@ function buildPublicState(core, settings, nowMs) {
   const c = music.on ? core.current : null;
   const pb = music.on ? core.playback : null;
   const likedBy = c ? core.weekLikes.by[c.id] || [] : [];
-  const base = settings.basePlaylist;
   return {
     music,
     spotify: { connected: core.spotify.connected, needsReauth: core.spotify.needsReauth },
@@ -219,7 +219,7 @@ function buildPublicState(core, settings, nowMs) {
     context: pb
       ? {
           uri: pb.contextUri,
-          name: base && base.uri === pb.contextUri ? base.name : null,
+          name: weekly.nameForUri(settings, pb.contextUri),
           repeat: pb.repeat,
           shuffle: pb.shuffle,
         }

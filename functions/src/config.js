@@ -31,6 +31,8 @@ const SEARCH_PAGE_SIZE = 10;
 
 const FAVOURITES_PLAYLIST_NAME = 'Warehouse Favourites';
 const FAVOURITES_MAX_TRACKS = 100;
+// How many weekly favourites playlists the iPads see; older ones are archived.
+const WEEKLY_VISIBLE = 4;
 // Playlists admins add for everyone to browse and queue from.
 const MAX_WAREHOUSE_PLAYLISTS = 12;
 const PLAYLIST_PAGE_SIZE = 50;
@@ -56,9 +58,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   noRepeatHours: 2,
   allowExplicit: true,
   speakerDeviceName: '',
-  basePlaylist: null, // { uri, name }
-  warehousePlaylists: [], // [{ id, uri, name, owner, imageUrl, browsable }]
-  favourites: null, // { playlistId, uri, url, ownerId, weekKey, builtAt, trackCount }
+  // [{ playlistId, uri, url, ownerId, number, name, label, madeAt, trackCount, archived, kept }]
+  weeklyPlaylists: [],
+  warehousePlaylists: [], // [{ id, uri, name, owner, imageUrl, browsable, trackCount }]
+  defaultPlaylistId: null, // the playlist music starts from; null = the newest weekly one
+  lastPlayed: null, // { uri, name } of the last playlist started from the admin page
 });
 
 module.exports = {
@@ -75,6 +79,7 @@ module.exports = {
   SEARCH_PAGE_SIZE,
   FAVOURITES_PLAYLIST_NAME,
   FAVOURITES_MAX_TRACKS,
+  WEEKLY_VISIBLE,
   MAX_WAREHOUSE_PLAYLISTS,
   PLAYLIST_PAGE_SIZE,
   DEFAULT_SETTINGS,

@@ -198,6 +198,12 @@ img { display: block; }
 .spotify-credit { display: inline-flex; align-items: center; gap: 10px; padding: 11px; color: var(--muted); text-decoration: none; }
 .spotify-credit img { height: 22px; width: auto; }
 .playlist-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+/* Rows with several buttons: the buttons drop below the name when space runs short. */
+.row.has-actions { flex-wrap: wrap; }
+.row.has-actions .meta { flex: 1 1 220px; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin-left: auto; }
+.btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.editor { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 16px; }
 .playlist-head .name { font-weight: 800; font-size: 18px; }
 .admin-link { color: var(--muted); margin-left: 12px; padding: 8px; text-decoration: none; border-bottom: 1px dotted var(--muted); }
 .search input:disabled { opacity: 0.5; }

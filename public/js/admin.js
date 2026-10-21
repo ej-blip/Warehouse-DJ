@@ -15,6 +15,9 @@ const s = {
   overview: null,
   pub: null,
   speakers: null,
+  lists: null, // warehouse playlists, archived ones, and the starting playlist
+  editing: null, // the weekly playlist open for editing
+  editingUris: new Set(),
   resetMode: false,
   watching: false,
 };
@@ -184,7 +187,7 @@ function renderBanners() {
     if (s.pub.speaker.status === 'offline') items.push(['bad', "The speaker iPad isn't reachable. Open Spotify on it."]);
     if (s.pub.speaker.status === 'private') items.push(['warn', 'Spotify on the speaker iPad is in a Private Session. Turn it off.']);
   }
-  if (!o.settings.basePlaylist) items.push(['info', "Pick a starting playlist below. It plays whenever nobody's queued anything."]);
+  if (s.lists && !s.lists.starting) items.push(['info', 'No starting playlist yet. Make a weekly favourites playlist below, or add a playlist and switch on "Start here".']);
   $('#banners').replaceChildren(...items.map(([kind, text]) => el('div', { class: `banner ${kind}` }, text)));
 }
 
@@ -264,46 +267,93 @@ async function saveSettings(patch, message = 'Saved.') {
   return r;
 }
 
+// ---- playlists --------------------------------------------------------------
+
 function renderBase() {
-  const base = s.overview.settings.basePlaylist;
-  $('#base-playlist').textContent = base
-    ? `Current starting playlist: ${base.name}. Tap Play on another one to switch.`
-    : "None chosen yet. It plays whenever nobody's queued anything.";
+  const box = $('#base-playlist');
+  const start = s.lists && s.lists.starting;
+  if (!s.lists) {
+    box.textContent = '';
+    return;
+  }
+  box.textContent = !start
+    ? 'No starting playlist yet. Make a weekly favourites playlist below, or add a playlist and switch on "Start here".'
+    : start.chosen
+      ? `Music starts from ${start.name}, because it's switched on below. Switch it off to go back to the newest weekly favourites.`
+      : `Music starts from ${start.name}, the newest weekly favourites. Switch on "Start here" on another playlist to use that one instead.`;
 }
 
 function playlistRow(p, ...actions) {
-  const sub = [p.owner, p.trackCount ? `${p.trackCount} songs` : null, p.browsable === false ? "iPads can't open this one (Spotify blocks it), but you can play it" : null];
-  return el('li', { class: 'row' },
+  const sub = [
+    p.starting ? 'Music starts here' : null,
+    p.owner,
+    p.trackCount ? `${p.trackCount} songs` : null,
+    p.browsable === false ? "iPads can't open this one (Spotify blocks it), but you can play it" : null,
+  ];
+  return el('li', { class: 'row has-actions' },
     art(p.imageUrl, 'art small'),
     el('div', { class: 'meta' }, el('div', { class: 'name' }, p.name), el('div', { class: 'sub' }, sub.filter(Boolean).join(' · '))),
-    ...actions,
+    el('div', { class: 'row-actions' }, ...actions),
   );
 }
 
 const playButton = (p) => el('button', { class: 'btn small primary', onclick: (e) => playPlaylist(e.currentTarget, p) }, 'Play');
 
+function startToggle(p) {
+  const on = s.lists.defaultPlaylistId === p.id;
+  return el('button', {
+    class: 'btn small',
+    'aria-pressed': String(on),
+    title: on ? 'Switch off to start from the newest weekly favourites' : 'Start music from this playlist',
+    onclick: (e) => setStarting(e.currentTarget, on ? null : p),
+  }, on ? '★ Start here' : '☆ Start here');
+}
+
+async function setStarting(button, p) {
+  const r = await act(button, () => adminApi('/default-playlist', { method: 'PUT', body: { id: p ? p.id : null } }), (res) =>
+    p ? `Music will start from ${p.name}.` : `Back to the newest weekly favourites${res.starting ? `: ${res.starting.name}` : ''}.`);
+  if (r) renderPlaylists(r);
+}
+
+async function weeklyAction(button, p, action) {
+  const done = action === 'archive' ? `Archived ${p.name}. It's still in your Spotify.` : `${p.name} is back on the iPads.`;
+  if (await act(button, () => adminApi(`/weekly/${p.id}/${action}`, { method: 'POST', body: {} }), done)) loadWarehousePlaylists();
+}
+
+const songsButton = (p) => el('button', { class: 'btn small', onclick: () => openEditor(p) }, 'Songs');
+
+function renderPlaylists(data) {
+  s.lists = data;
+  const { playlists, archived } = data;
+  $('#warehouse-playlists').replaceChildren(
+    ...(playlists.length
+      ? playlists.map((p) =>
+          p.kind === 'weekly'
+            ? playlistRow(p, playButton(p), startToggle(p), songsButton(p),
+                el('button', { class: 'btn small', onclick: (e) => weeklyAction(e.currentTarget, p, 'archive') }, 'Archive'))
+            : playlistRow(p, playButton(p), startToggle(p),
+                el('button', {
+                  class: 'btn small danger',
+                  onclick: async (e) => {
+                    if (await act(e.currentTarget, () => adminApi(`/warehouse-playlists/${p.id}`, { method: 'DELETE' }), `Removed ${p.name}.`)) loadWarehousePlaylists();
+                  },
+                }, 'Remove')))
+      : [el('li', { class: 'empty' }, 'None yet. Make a weekly favourites playlist below, or search for playlists to add.')]),
+  );
+  $('#archived-box').hidden = !archived.length;
+  $('#archived-playlists').replaceChildren(
+    ...archived.map((p) => playlistRow(p, playButton(p), songsButton(p),
+      el('button', { class: 'btn small', onclick: (e) => weeklyAction(e.currentTarget, p, 'restore') }, 'Restore'))),
+  );
+  renderBase();
+  renderBanners();
+}
+
 async function loadWarehousePlaylists() {
-  const list = $('#warehouse-playlists');
   try {
-    const { playlists } = await adminApi('/warehouse-playlists');
-    list.replaceChildren(
-      ...(playlists.length
-        ? playlists.map((p) =>
-            playlistRow(p,
-              playButton(p),
-              p.kind === 'saved'
-                ? el('button', {
-                    class: 'btn small danger',
-                    onclick: async (e) => {
-                      if (await act(e.currentTarget, () => adminApi(`/warehouse-playlists/${p.id}`, { method: 'DELETE' }), `Removed ${p.name}.`)) loadWarehousePlaylists();
-                    },
-                  }, 'Remove')
-                : null,
-            ))
-        : [el('li', { class: 'empty' }, 'None yet. Rebuild Warehouse Favourites below, or search for playlists to add.')]),
-    );
+    renderPlaylists(await adminApi('/warehouse-playlists'));
   } catch (err) {
-    list.replaceChildren(el('li', { class: 'empty' }, err.message));
+    $('#warehouse-playlists').replaceChildren(el('li', { class: 'empty' }, err.message));
   }
 }
 
@@ -337,12 +387,86 @@ async function searchPlaylists(query) {
   }
 }
 
-async function playPlaylist(button, p) {
-  const r = await act(button, () => adminApi('/playlist/play', { method: 'POST', body: { uri: p.uri, name: p.name } }), `Playing ${p.name}.`);
-  if (r) {
-    s.overview.settings.basePlaylist = { uri: p.uri, name: p.name };
-    renderBase();
-    renderBanners();
+// Plays it now, on shuffle. It doesn't change the playlist music starts from.
+function playPlaylist(button, p) {
+  return act(button, () => adminApi('/playlist/play', { method: 'POST', body: { uri: p.uri, name: p.name, trackCount: p.trackCount || null } }), `Playing ${p.name}.`);
+}
+
+// ---- editing a weekly favourites playlist -------------------------------------
+
+function songRow(t, num, action) {
+  return el('li', { class: 'row' },
+    num ? el('span', { class: 'num' }, num) : null,
+    art(t.imageUrl, 'art small'),
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, artistLine(t.artists))),
+    action,
+  );
+}
+
+async function openEditor(p) {
+  s.editing = p;
+  $('#pl-editor').hidden = false;
+  $('#pl-editor-name').textContent = p.name;
+  $('#pl-editor-count').textContent = '';
+  $('#pl-editor-search').value = '';
+  $('#pl-editor-results').replaceChildren();
+  $('#pl-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  await loadEditorSongs();
+}
+
+function closeEditor() {
+  s.editing = null;
+  $('#pl-editor').hidden = true;
+}
+
+async function loadEditorSongs() {
+  const p = s.editing;
+  const list = $('#pl-editor-songs');
+  list.replaceChildren(el('li', { class: 'empty' }, 'Loading…'));
+  try {
+    const { tracks } = await adminApi(`/weekly/${p.id}/songs`);
+    if (s.editing !== p) return;
+    s.editingUris = new Set(tracks.map((t) => t.uri));
+    $('#pl-editor-count').textContent = `${tracks.length} songs`;
+    list.replaceChildren(
+      ...(tracks.length
+        ? tracks.map((t, i) => songRow(t, i + 1, el('button', { class: 'btn small danger', onclick: (e) => removeSong(e.currentTarget, t) }, 'Remove')))
+        : [el('li', { class: 'empty' }, 'No songs. Search below to add some.')]),
+    );
+  } catch (err) {
+    list.replaceChildren(el('li', { class: 'empty' }, err.message));
+  }
+}
+
+async function removeSong(button, t) {
+  if (await act(button, () => adminApi(`/weekly/${s.editing.id}/songs/${t.id}`, { method: 'DELETE' }), `Removed ${t.name}.`)) {
+    loadEditorSongs();
+    loadWarehousePlaylists();
+  }
+}
+
+async function addSong(button, t) {
+  if (await act(button, () => adminApi(`/weekly/${s.editing.id}/songs`, { method: 'POST', body: { uri: t.uri } }), `Added ${t.name}.`)) {
+    button.replaceWith(el('button', { class: 'btn small good', disabled: true }, 'Added ✓'));
+    loadEditorSongs();
+    loadWarehousePlaylists();
+  }
+}
+
+async function searchSongsToAdd(query) {
+  const list = $('#pl-editor-results');
+  list.replaceChildren(el('li', { class: 'empty' }, 'Searching…'));
+  try {
+    const { tracks } = await adminApi(`/search?q=${encodeURIComponent(query)}`);
+    list.replaceChildren(
+      ...(tracks.length
+        ? tracks.map((t) => songRow(t, null, s.editingUris.has(t.uri)
+            ? el('button', { class: 'btn small good', disabled: true }, 'On it ✓')
+            : el('button', { class: 'btn small primary', onclick: (e) => addSong(e.currentTarget, t) }, 'Add')))
+        : [el('li', { class: 'empty' }, 'No songs found.')]),
+    );
+  } catch (err) {
+    list.replaceChildren(el('li', { class: 'empty' }, err.message));
   }
 }
 
@@ -491,36 +615,35 @@ function renderAdmins() {
 async function loadFavourites() {
   const box = $('#favourites');
   try {
-    const { favourites: fav, thisWeek } = await adminApi('/favourites');
-    const rebuild = el('button', {
+    const { latest, total, top } = await adminApi('/favourites');
+    const make = el('button', {
       class: 'btn small',
       onclick: async (e) => {
-        const r = await act(e.currentTarget, () => adminApi('/favourites/rebuild', { method: 'POST', body: {} }), (res) => (res.skipped ? res.message : `Playlist rebuilt with ${res.trackCount} songs.`));
-        if (r) {
+        const r = await act(e.currentTarget, () => adminApi('/favourites/new', { method: 'POST', body: {} }), (res) =>
+          res.skipped ? res.message : `Made ${res.name} with ${res.trackCount} songs.${res.archivedNames.length ? ` Archived ${res.archivedNames.join(', ')}.` : ''}`);
+        if (r && !r.skipped) {
           loadFavourites();
           loadWarehousePlaylists();
         }
       },
-    }, 'Rebuild now from this week');
-    const play = fav
-      ? el('button', { class: 'btn small primary', onclick: (e) => playPlaylist(e.currentTarget, { uri: fav.uri, name: 'Warehouse Favourites' }) }, 'Play it now')
-      : null;
+    }, 'Make a new one now');
     box.replaceChildren(
-      el('p', { class: 'hint' }, fav
-        ? el('span', {}, el('a', { href: fav.url, target: '_blank', rel: 'noopener' }, 'Warehouse Favourites'), ` has ${fav.trackCount} songs from ${fav.weekKey} (built ${dateAt(fav.builtAt)}).`)
-        : 'Built every Sunday at 8pm from the songs queued and liked that week.'),
-      el('div', { class: 'inline' }, play, rebuild),
-      el('h3', {}, `This week so far (${thisWeek.total} songs)`),
-      thisWeek.top.length
+      el('p', { class: 'hint' }, 'Every Sunday at 8pm a new numbered playlist is made from the songs queued and 👍 since the last one, most liked first. The iPads show the newest 4; older ones move to Archived and stay in your Spotify.'),
+      latest
+        ? el('p', { class: 'hint' }, 'Newest: ', el('a', { href: latest.url, target: '_blank', rel: 'noopener' }, latest.name), ` · ${latest.trackCount} songs · made ${dateAt(latest.madeAt)}`)
+        : null,
+      el('div', { class: 'inline' }, make),
+      el('h3', {}, latest ? `Since ${latest.name.replace(/ · .*/, '')} was made (${total} songs)` : `This week so far (${total} songs)`),
+      top.length
         ? el('ul', { class: 'list' },
-            thisWeek.top.map((t, i) =>
+            top.map((t, i) =>
               el('li', { class: 'row' },
                 el('span', { class: 'num' }, i + 1),
                 art(t.imageUrl, 'art small'),
                 el('div', { class: 'meta' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, artistLine(t.artists))),
                 el('span', { class: 'tag' }, `👍 ${t.likes} · queued ${t.queued}`),
               )))
-        : el('p', { class: 'empty' }, 'Nothing queued or liked yet this week.'),
+        : el('p', { class: 'empty' }, latest ? 'Nothing queued or liked since then yet.' : 'Nothing queued or liked yet this week.'),
     );
   } catch (err) {
     box.replaceChildren(el('p', { class: 'empty' }, err.message));
@@ -544,6 +667,12 @@ function wireMain() {
     const q = $('#pl-search').value.trim();
     if (q) searchPlaylists(q);
   });
+  $('#pl-editor-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = $('#pl-editor-search').value.trim();
+    if (q) searchSongsToAdd(q);
+  });
+  $('#pl-editor-close').addEventListener('click', closeEditor);
 
   $('#add-break').addEventListener('click', () => $('#breaks').append(breakRow()));
   $('#test-break').addEventListener('click', async (e) => {

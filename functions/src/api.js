@@ -296,8 +296,54 @@ app.get('/api/admin/playlists', requireAdmin, wrap(async (req, res) => {
   res.json({ playlists: items.map(spotify.normalizePlaylist).filter(Boolean) });
 }));
 
+// Songs to add to a weekly favourites playlist.
+app.get('/api/admin/search', requireAdmin, wrap(async (req, res) => {
+  const q = search.buildSearchQuery('song', String(req.query.q || '').slice(0, 100));
+  if (!q) return res.json({ tracks: [] });
+  let data;
+  try {
+    data = await spotify.searchTracks(q);
+  } catch (err) {
+    throw toUserError(err);
+  }
+  res.json({ tracks: ((data && data.tracks && data.tracks.items) || []).map(spotify.normalizeTrack).filter(Boolean) });
+}));
+
 app.get('/api/admin/warehouse-playlists', requireAdmin, wrap(async (req, res) => {
-  res.json({ playlists: playlists.warehouseList(await store.getSettings({ fresh: true })) });
+  res.json(playlists.adminList(await store.getSettings({ fresh: true })));
+}));
+
+// The playlist music starts from. null goes back to the newest weekly favourites.
+app.put('/api/admin/default-playlist', requireAdmin, wrap(async (req, res) => {
+  const id = req.body && typeof req.body.id === 'string' ? req.body.id : null;
+  await playlists.setDefault(id);
+  res.json(playlists.adminList(await store.getSettings({ fresh: true })));
+}));
+
+app.post('/api/admin/weekly/:id/archive', requireAdmin, wrap(async (req, res) => {
+  await favourites.setArchived(req.params.id, true);
+  res.json({ ok: true });
+}));
+
+app.post('/api/admin/weekly/:id/restore', requireAdmin, wrap(async (req, res) => {
+  await favourites.setArchived(req.params.id, false);
+  res.json({ ok: true });
+}));
+
+app.get('/api/admin/weekly/:id/songs', requireAdmin, wrap(async (req, res) => {
+  res.json(await favourites.songs(req.params.id));
+}));
+
+app.post('/api/admin/weekly/:id/songs', requireAdmin, wrap(async (req, res) => {
+  const r = await favourites.addSong(req.params.id, req.body && req.body.uri);
+  logger.info('Song added to a favourites playlist', { by: req.admin.name });
+  res.json(r);
+}));
+
+app.delete('/api/admin/weekly/:id/songs/:trackId', requireAdmin, wrap(async (req, res) => {
+  const r = await favourites.removeSong(req.params.id, req.params.trackId);
+  logger.info('Song removed from a favourites playlist', { by: req.admin.name });
+  res.json(r);
 }));
 
 app.post('/api/admin/warehouse-playlists', requireAdmin, wrap(async (req, res) => {
@@ -312,9 +358,10 @@ app.delete('/api/admin/warehouse-playlists/:id', requireAdmin, wrap(async (req, 
 }));
 
 app.post('/api/admin/playlist/play', requireAdmin, wrap(async (req, res) => {
-  const { uri, name } = req.body || {};
+  const { uri, name, trackCount } = req.body || {};
   if (!/^spotify:playlist:[A-Za-z0-9]{22}$/.test(String(uri || ''))) throw new UserError('bad_playlist', "That isn't a playlist.");
-  await playback.playPlaylist({ uri, name: String(name || 'Playlist').slice(0, 100) });
+  const count = Number.isInteger(trackCount) && trackCount > 0 ? Math.min(trackCount, 10000) : null;
+  await playback.playPlaylist({ uri, name: String(name || 'Playlist').slice(0, 100), trackCount: count });
   res.json({ ok: true });
 }));
 
@@ -349,12 +396,14 @@ app.delete('/api/admin/admins/:id', requireAdmin, requireOwner, wrap(async (req,
 }));
 
 app.get('/api/admin/favourites', requireAdmin, wrap(async (req, res) => {
-  const settings = await store.getSettings({ fresh: true });
-  res.json({ favourites: settings.favourites, thisWeek: await favourites.preview() });
+  res.json(await favourites.preview());
 }));
 
-app.post('/api/admin/favourites/rebuild', requireAdmin, wrap(async (req, res) => {
-  res.json(await favourites.build());
+// Make the next numbered playlist now instead of waiting for Sunday night.
+app.post('/api/admin/favourites/new', requireAdmin, wrap(async (req, res) => {
+  const r = await favourites.build();
+  if (!r.skipped) logger.info('Favourites playlist made by hand', { name: r.name, by: req.admin.name });
+  res.json(r);
 }));
 
 // ---- Spotify login ----------------------------------------------------------
@@ -372,8 +421,13 @@ app.get('/api/auth/callback', wrap(async (req, res) => {
   try {
     const login = await spotify.exchangeCode(String(req.query.code || ''));
     const settings = await store.getSettings({ fresh: true });
-    // A different Spotify account owns a different favourites playlist.
-    if (settings.favourites && settings.favourites.ownerId !== login.userId) await store.patchSettings({ favourites: null });
+    // Favourites playlists belong to the account that made them.
+    const mine = (settings.weeklyPlaylists || []).filter((p) => p.ownerId === login.userId);
+    if (mine.length !== (settings.weeklyPlaylists || []).length) {
+      const keepDefault = mine.some((p) => p.playlistId === settings.defaultPlaylistId) ||
+        (settings.warehousePlaylists || []).some((p) => p.id === settings.defaultPlaylistId);
+      await store.patchSettings({ weeklyPlaylists: mine, defaultPlaylistId: keepDefault ? settings.defaultPlaylistId : null });
+    }
     await store.mutateCore((c) => {
       c.spotify = { connected: true, needsReauth: false };
     });

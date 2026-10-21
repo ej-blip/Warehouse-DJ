@@ -292,4 +292,5 @@ module.exports = {
   createPlaylist: (name, description) => call('POST', '/me/playlists', { body: { name, description, public: false } }),
   // Spotify renamed /tracks to /items in February 2026; the old path is refused in Development Mode.
   replacePlaylistItems: (id, uris) => call('PUT', `/playlists/${encodeURIComponent(id)}/items`, { body: { uris } }),
+  renamePlaylist: (id, name, description) => call('PUT', `/playlists/${encodeURIComponent(id)}`, { body: { name, description } }),
 };

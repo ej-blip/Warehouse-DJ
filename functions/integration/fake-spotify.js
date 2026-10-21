@@ -163,10 +163,18 @@ function createFakeSpotify() {
     if (req.method === 'PUT' && path === '/v1/me/player/play') {
       const target = deviceId || (activeDevice() && activeDevice().id);
       if (!target) return playerError(res, 404, 'NO_ACTIVE_DEVICE', 'Player command failed: No active device found');
-      setActive(target);
       if (body.context_uri) {
-        s.player = { isPlaying: true, item: contextTracks[0], progressMs: 0, context: { uri: body.context_uri, type: 'playlist' }, repeat: 'off', shuffle: false, ctxIndex: 0 };
-      } else if (s.player) {
+        const made = s.playlists[body.context_uri.split(':').pop()];
+        const list = made ? made.uris.map((u) => byUri.get(u)) : contextTracks;
+        const position = (body.offset && body.offset.position) || 0;
+        if (position >= list.length) return send(res, 400, { error: { status: 400, message: 'Invalid offset' } });
+        setActive(target);
+        s.lastPlayBody = body;
+        s.player = { isPlaying: true, item: list[position], progressMs: 0, context: { uri: body.context_uri, type: 'playlist' }, repeat: 'off', shuffle: false, ctxIndex: made ? 0 : position };
+        return send(res, 204);
+      }
+      setActive(target);
+      if (s.player) {
         s.player.isPlaying = true;
       }
       return send(res, 204);
@@ -217,6 +225,13 @@ function createFakeSpotify() {
       const pid = id22(`pl${Object.keys(s.playlists).length}`);
       s.playlists[pid] = { id: pid, name: body.name, public: body.public, uris: [] };
       return send(res, 201, { id: pid, uri: `spotify:playlist:${pid}`, external_urls: { spotify: `https://open.spotify.com/playlist/${pid}` } });
+    }
+    const details = /^\/v1\/playlists\/([^/]+)$/.exec(path);
+    if (req.method === 'PUT' && details) {
+      const pl = s.playlists[details[1]];
+      if (!pl) return send(res, 404, { error: { status: 404, message: 'Not found' } });
+      Object.assign(pl, { name: body.name, description: body.description });
+      return send(res, 200);
     }
     const items = /^\/v1\/playlists\/([^/]+)\/items$/.exec(path);
     if (req.method === 'GET' && items) {

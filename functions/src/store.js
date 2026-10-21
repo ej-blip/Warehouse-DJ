@@ -4,6 +4,7 @@ const { initializeApp, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { DEFAULT_SETTINGS } = require('./config');
 const core = require('./core');
+const weekly = require('./weekly');
 
 if (!getApps().length) initializeApp();
 const db = getFirestore();
@@ -24,7 +25,7 @@ let settingsCache = null;
 async function getSettings({ fresh = false } = {}) {
   if (!fresh && settingsCache && Date.now() - settingsCache.at < SETTINGS_CACHE_MS) return settingsCache.value;
   const snap = await refs.settings.get();
-  const value = { ...DEFAULT_SETTINGS, ...(snap.exists ? snap.data() : {}) };
+  const value = weekly.migrate({ ...DEFAULT_SETTINGS, ...(snap.exists ? snap.data() : {}) });
   settingsCache = { value, at: Date.now() };
   return value;
 }

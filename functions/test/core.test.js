@@ -139,7 +139,7 @@ test('likes are one per iPad per song per week', () => {
 
 test('public state shows queued songs only and publishes only on visible change', () => {
   const c = core.emptyCore();
-  const settings = { ...DEFAULT_SETTINGS, basePlaylist: { uri: 'spotify:playlist:base', name: 'Warehouse Mix' } };
+  const settings = { ...DEFAULT_SETTINGS, warehousePlaylists: [{ id: 'base', uri: 'spotify:playlist:base', name: 'Warehouse Mix' }] };
   core.applyObservation(c, observe(T0, 'a', { progressMs: 1000 }));
   core.reserve(c, entry('r1', 'b'));
   let pub = core.buildPublicState(c, settings, T0);

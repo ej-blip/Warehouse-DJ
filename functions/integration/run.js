@@ -49,6 +49,8 @@ before(async () => {
     store: require('../src/store'),
     playback: require('../src/playback'),
     favourites: require('../src/favourites'),
+    spotify: require('../src/spotify'),
+    time: require('../src/time'),
   };
   server = http.createServer(mods.app);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -254,21 +256,35 @@ test('breaks pause the music and resume it afterwards', async () => {
   assert.equal(await mods.playback.handleBreaks(settings, at(10, 42)), null);
 });
 
-test('weekly favourites: liked songs first, then queued ones', async () => {
-  const r = await call('POST', '/api/admin/favourites/rebuild', { admin: ownerToken, body: {} });
+test('weekly favourites: numbered playlists, liked songs first, each picking up where the last left off', async () => {
+  const r = await call('POST', '/api/admin/favourites/new', { admin: ownerToken, body: {} });
   assert.equal(r.status, 200);
+  assert.match(r.body.name, /^Warehouse Favourites #1 · \d/);
   const pl = fake.state.playlists[r.body.playlistId];
   assert.equal(pl.public, false);
+  assert.equal(pl.name, r.body.name);
   assert.equal(pl.uris[0], fake.catalogue[0].uri); // Song A: 2 likes
   assert.equal(pl.uris.length, 4);
-  // Rebuilding reuses the same playlist.
-  const again = await call('POST', '/api/admin/favourites/rebuild', { admin: ownerToken, body: {} });
-  assert.equal(again.body.playlistId, r.body.playlistId);
+
+  // Nothing new since #1, so there's nothing to make.
+  const none = await call('POST', '/api/admin/favourites/new', { admin: ownerToken, body: {} });
+  assert.equal(none.body.skipped, true);
+
+  // Only songs queued after #1 was made go into #2.
+  const t = mods.spotify.normalizeTrack(fake.catalogue[4]);
+  const at = r.body.madeAt + 1;
+  await mods.store.weekTrackRef(mods.time.weekKeyAt(at), t.id).set(mods.store.weekStatUpdate(t, { now: at, deviceId: 'x', queued: 1 }), { merge: true });
   const preview = await call('GET', '/api/admin/favourites', { admin: ownerToken });
-  assert.equal(preview.body.thisWeek.top[0].likes, 2);
+  assert.equal(preview.body.latest.number, 1);
+  assert.deepEqual(preview.body.top.map((x) => x.trackId), [t.id]);
+  const second = await call('POST', '/api/admin/favourites/new', { admin: ownerToken, body: {} });
+  assert.match(second.body.name, /^Warehouse Favourites #2 · /);
+  assert.deepEqual(fake.state.playlists[second.body.playlistId].uris, [t.uri]);
 });
 
-test('warehouse playlists: everyone can open Favourites and admin-added playlists', async () => {
+const short = (p) => p.name.replace(/ · .*/, '');
+
+test('warehouse playlists: everyone can open weekly favourites and admin-added playlists', async () => {
   const found = await call('GET', '/api/admin/playlists?q=mix', { admin: ownerToken });
   assert.equal(found.body.playlists.length, 2); // Spotify's null entries are dropped
   const [mix, top50] = found.body.playlists;
@@ -276,13 +292,13 @@ test('warehouse playlists: everyone can open Favourites and admin-added playlist
   assert.equal((await call('POST', '/api/admin/warehouse-playlists', { admin: ownerToken, body: top50 })).body.browsable, false);
   assert.equal((await call('POST', '/api/admin/warehouse-playlists', { admin: ownerToken, body: mix })).body.error, 'already_added');
   const adminList = await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken });
-  assert.deepEqual(adminList.body.playlists.map((p) => p.name), ['Warehouse Favourites', 'Warehouse Mix', 'Top 50 - Australia']);
+  assert.deepEqual(adminList.body.playlists.map(short), ['Warehouse Favourites #2', 'Warehouse Favourites #1', 'Warehouse Mix', 'Top 50 - Australia']);
 
   // iPads see only the playlists they can open.
   const list = await call('GET', '/api/playlists', { device: ipad1 });
-  assert.deepEqual(list.body.playlists.map((p) => p.name), ['Warehouse Favourites', 'Warehouse Mix']);
-  const songs = await call('GET', `/api/playlists/${list.body.playlists[0].id}/tracks`, { device: ipad1 });
-  assert.equal(songs.body.tracks[0].name, 'Song A'); // the most-liked song leads Favourites
+  assert.deepEqual(list.body.playlists.map(short), ['Warehouse Favourites #2', 'Warehouse Favourites #1', 'Warehouse Mix']);
+  const songs = await call('GET', `/api/playlists/${list.body.playlists[1].id}/tracks`, { device: ipad1 });
+  assert.equal(songs.body.tracks[0].name, 'Song A'); // the most-liked song leads #1
   assert.ok(songs.body.tracks.every((t) => 'blocked' in t));
   const mixSongs = await call('GET', `/api/playlists/${mix.id}/tracks`, { device: ipad1 });
   assert.deepEqual(mixSongs.body.tracks.map((t) => t.name), ['Base One', 'Base Two', 'Base Three']);
@@ -291,7 +307,75 @@ test('warehouse playlists: everyone can open Favourites and admin-added playlist
   assert.equal((await call('GET', `/api/playlists/${'z'.repeat(22)}/tracks`, { device: ipad1 })).status, 404);
 
   await call('DELETE', `/api/admin/warehouse-playlists/${top50.id}`, { admin: ownerToken });
-  assert.equal((await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists.length, 2);
+  assert.equal((await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists.length, 3);
+});
+
+test('music starts from the newest weekly favourites unless an admin switches another on', async () => {
+  const list = async () => (await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body;
+  let l = await list();
+  const [two, one] = l.playlists;
+  assert.equal(l.starting.id, two.id);
+  assert.equal(l.defaultPlaylistId, null);
+  assert.ok(two.starting && !one.starting);
+  l = (await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: one.id } })).body;
+  assert.equal(l.starting.id, one.id);
+  assert.equal(l.defaultPlaylistId, one.id);
+
+  // Archiving hides it from the iPads, keeps it for admins, and music goes back to starting from the newest.
+  await call('POST', `/api/admin/weekly/${one.id}/archive`, { admin: ownerToken, body: {} });
+  l = await list();
+  assert.equal(l.starting.id, two.id);
+  assert.deepEqual(l.archived.map((p) => p.id), [one.id]);
+  assert.ok(!(await call('GET', '/api/playlists', { device: ipad1 })).body.playlists.some((p) => p.id === one.id));
+  await call('POST', `/api/admin/weekly/${one.id}/restore`, { admin: ownerToken, body: {} });
+  assert.equal((await list()).archived.length, 0);
+
+  // Only playlists on the list can be switched on; null switches back to the newest.
+  assert.equal((await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: 'z'.repeat(22) } })).status, 404);
+  assert.equal((await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: null } })).body.starting.id, two.id);
+});
+
+test('admins can add and remove songs on a weekly favourites playlist', async () => {
+  const [two] = (await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists;
+  const songA = fake.catalogue[0];
+  const added = await call('POST', `/api/admin/weekly/${two.id}/songs`, { admin: ownerToken, body: { uri: songA.uri } });
+  assert.equal(added.body.trackCount, 2);
+  assert.equal((await call('POST', `/api/admin/weekly/${two.id}/songs`, { admin: ownerToken, body: { uri: songA.uri } })).body.error, 'already_added');
+  const songs = await call('GET', `/api/admin/weekly/${two.id}/songs`, { admin: ownerToken });
+  assert.deepEqual(songs.body.tracks.map((t) => t.name), ['Song Long', 'Song A']);
+  // The iPads see the change straight away.
+  const ipadSongs = await call('GET', `/api/playlists/${two.id}/tracks`, { device: ipad1 });
+  assert.deepEqual(ipadSongs.body.tracks.map((t) => t.name), ['Song Long', 'Song A']);
+
+  await call('DELETE', `/api/admin/weekly/${two.id}/songs/${fake.catalogue[4].id}`, { admin: ownerToken });
+  assert.deepEqual(fake.state.playlists[two.id].uris, [songA.uri]);
+  assert.equal((await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists[0].trackCount, 1);
+  assert.ok((await call('GET', '/api/admin/search?q=song', { admin: ownerToken })).body.tracks.length > 0);
+  // Workers can't edit.
+  assert.equal((await call('POST', `/api/admin/weekly/${two.id}/songs`, { device: ipad1, body: { uri: songA.uri } })).status, 401);
+});
+
+test('Play carries on where the music stopped, or starts the starting playlist on shuffle', async () => {
+  // Spotify has forgotten the paused speaker, but still knows the song.
+  fake.state.player.isPlaying = false;
+  const song = fake.state.player.item;
+  fake.state.devices.forEach((d) => { d.is_active = false; });
+  await mods.playback.sync();
+  assert.equal((await call('POST', '/api/play', { device: ipad1, body: {} })).status, 200);
+  assert.equal(fake.state.player.item.uri, song.uri);
+  assert.equal(fake.state.player.isPlaying, true);
+
+  // First thing in the morning there's nothing to carry on from.
+  const mix = (await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists.find((p) => p.name === 'Warehouse Mix');
+  await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: mix.id } });
+  await mods.store.mutateCore((c) => { c.current = null; });
+  fake.state.player = null;
+  fake.state.devices.forEach((d) => { d.is_active = false; });
+  assert.equal((await call('POST', '/api/play', { device: ipad1, body: {} })).status, 200);
+  assert.equal(fake.state.lastPlayBody.context_uri, mix.uri);
+  assert.ok(fake.state.lastPlayBody.offset.position >= 0 && fake.state.lastPlayBody.offset.position < 3);
+  assert.equal(fake.state.player.shuffle, true);
+  await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: null } });
 });
 
 test('an iPad can be set up on the device itself with an admin PIN', async () => {

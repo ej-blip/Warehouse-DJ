@@ -9,6 +9,7 @@ const spotify = require('./spotify');
 const store = require('./store');
 const core = require('./core');
 const rules = require('./rules');
+const weekly = require('./weekly');
 const { localParts, parseClock, weekKeyAt } = require('./time');
 const { UserError, SpotifyError, SpotifyAuthError, speakerOffline, toUserError } = require('./errors');
 
@@ -141,6 +142,20 @@ async function ignoreAlready(fn) {
   }
 }
 
+// Start a playlist on shuffle from a random song, so starts don't always open the same way.
+async function startPlaylist(deviceId, playlist) {
+  const body = { context_uri: playlist.uri };
+  if (playlist.trackCount > 1) body.offset = { position: crypto.randomInt(playlist.trackCount) };
+  try {
+    await spotify.play(deviceId, body);
+  } catch (err) {
+    // The song count can be out of date; start from the top instead.
+    if (!(body.offset && err instanceof SpotifyError && (err.status === 400 || err.status === 404))) throw err;
+    await spotify.play(deviceId, { context_uri: playlist.uri });
+  }
+  await spotify.setShuffle(true, deviceId).catch((err) => logger.warn('Could not turn shuffle on', { err: err.message }));
+}
+
 async function startOrResume(settings, speaker) {
   const pb = await spotify.playback();
   if (pb && pb.item) {
@@ -148,8 +163,23 @@ async function startOrResume(settings, speaker) {
     await ignoreAlready(() => spotify.play(speaker.id));
     return;
   }
-  if (settings.basePlaylist && settings.basePlaylist.uri) {
-    await spotify.play(speaker.id, { context_uri: settings.basePlaylist.uri });
+  // Spotify forgets a paused speaker after a few minutes. If music was playing earlier
+  // today, ask it to carry on from where it stopped before starting anything new.
+  if ((await store.readCore()).current) {
+    try {
+      await ignoreAlready(() => spotify.play(speaker.id));
+      for (const wait of [800, 1200]) {
+        await sleep(wait);
+        const after = await spotify.playback();
+        if (after && after.is_playing && after.item) return;
+      }
+    } catch (err) {
+      if (!(err instanceof SpotifyError) || err.status === 429) throw err;
+    }
+  }
+  const start = weekly.startingPlaylist(settings);
+  if (start) {
+    await startPlaylist(speaker.id, start);
     return;
   }
   await spotify.transfer(speaker.id, true);
@@ -183,19 +213,21 @@ async function control(action, { admin = false } = {}) {
   return sync().catch((err) => logger.warn('Sync after control failed', { err: err.message }));
 }
 
+// Play a playlist now. It doesn't change the playlist music starts from by default.
 async function playPlaylist(playlist) {
   const settings = await store.getSettings();
   const speaker = await findSpeaker(settings);
   if (!speaker) throw speakerOffline();
+  const known = [...(settings.weeklyPlaylists || []), ...(settings.warehousePlaylists || [])].find((p) => p.uri === playlist.uri);
   try {
-    await spotify.play(speaker.id, { context_uri: playlist.uri });
+    await startPlaylist(speaker.id, { ...playlist, trackCount: (known && known.trackCount) || playlist.trackCount });
   } catch (err) {
     if (err instanceof SpotifyError && (err.status === 403 || err.status === 400)) {
       throw new UserError('playlist_refused', "Spotify won't let the app start that playlist. Start it in the Spotify app on the speaker iPad instead.", 409);
     }
     throw toUserError(err);
   }
-  await store.patchSettings({ basePlaylist: { uri: playlist.uri, name: playlist.name } });
+  await store.patchSettings({ lastPlayed: { uri: playlist.uri, name: (known && known.name) || playlist.name } });
   await sleep(800);
   return sync().catch(() => null);
 }
