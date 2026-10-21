@@ -726,6 +726,13 @@ function watchIdleOnSharedDevice() {
 }
 
 function start() {
+  // A copy of this page saved by the browser before an update can meet this newer script,
+  // which then can't find what it needs. Load a fresh copy instead.
+  if (!document.getElementById('pl-editor')) {
+    if (!location.search.includes('fresh=')) location.replace(`/admin?fresh=${Date.now()}`);
+    return;
+  }
+  if (location.search.includes('fresh=')) history.replaceState(null, '', '/admin');
   handleSpotifyReturn();
   wireSignIn();
   wireMain();
