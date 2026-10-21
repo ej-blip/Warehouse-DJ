@@ -1,7 +1,7 @@
 // The admin page: Spotify login, speaker choice, starting playlist, rules, iPad links,
 // admins and the weekly favourites playlist.
 
-import { el, $, art, toast, dateAt, ago, artistLine, api, storage, watchDoc } from './common.js';
+import { el, $, art, toast, dateAt, ago, artistLine, api, storage, watchDoc, wireThemeToggle } from './common.js';
 
 const SESSION_KEY = 'wdj.adminSession';
 const DEVICE_TOKEN_KEY = 'wdj.deviceToken';
@@ -733,6 +733,7 @@ function start() {
     return;
   }
   if (location.search.includes('fresh=')) history.replaceState(null, '', '/admin');
+  wireThemeToggle($('#theme-toggle'));
   handleSpotifyReturn();
   wireSignIn();
   wireMain();

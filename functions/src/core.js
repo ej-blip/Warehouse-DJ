@@ -11,6 +11,10 @@ const weekly = require('./weekly');
 const DAY = 86400000;
 const MINUTE = 60000;
 const RECENT_PLAYED_KEPT = 8;
+const RECENT_SHOWN = 3;
+// Up next shows this many songs: requested ones first (all of them, however many), then
+// whatever Spotify says comes next from the playlist.
+const UP_NEXT_SHOWN = 5;
 const STALE_PENDING_MS = 4 * 3600000;
 // Paused this long, then playing again, means we look for songs Spotify may have lost
 // (for example if iOS closed the Spotify app during a break).
@@ -23,6 +27,8 @@ function emptyCore() {
     recentTracks: {}, // trackId -> ms it was last queued or started playing
     recent: [], // songs that finished, newest first
     current: null, // song on the speaker right now
+    upcoming: [], // what Spotify says plays next, requested songs included
+    upcomingAt: 0,
     playback: null, // { isPlaying, progressMs, observedAt, contextUri, repeat, shuffle }
     speaker: { status: 'unknown', name: '', id: null, checkedAt: 0 },
     spotify: { connected: false, needsReauth: false },
@@ -185,6 +191,19 @@ function addLike(core, trackId, deviceId) {
   return true;
 }
 
+function setUpcoming(core, tracks, at) {
+  core.upcoming = tracks.slice(0, 10).map((t) => ({
+    trackId: t.id,
+    uri: t.uri,
+    name: t.name,
+    artists: t.artists,
+    imageUrl: t.imageUrl,
+    durationMs: t.durationMs,
+    explicit: t.explicit,
+  }));
+  core.upcomingAt = at;
+}
+
 // ---- what the iPads see ----------------------------------------------------
 
 function buildPublicState(core, settings, nowMs) {
@@ -193,6 +212,7 @@ function buildPublicState(core, settings, nowMs) {
   const c = music.on ? core.current : null;
   const pb = music.on ? core.playback : null;
   const likedBy = c ? core.weekLikes.by[c.id] || [] : [];
+  const requested = (music.on ? core.pending : []).filter((p) => p.state === 'queued');
   return {
     music,
     spotify: { connected: core.spotify.connected, needsReauth: core.spotify.needsReauth },
@@ -205,6 +225,7 @@ function buildPublicState(core, settings, nowMs) {
           artists: c.artists,
           album: c.album,
           imageUrl: c.imageUrl,
+          imageLarge: c.imageLarge || c.imageUrl,
           spotifyUrl: c.spotifyUrl,
           explicit: c.explicit,
           durationMs: c.durationMs,
@@ -224,9 +245,7 @@ function buildPublicState(core, settings, nowMs) {
           shuffle: pb.shuffle,
         }
       : null,
-    upNext: (music.on ? core.pending : [])
-      .filter((p) => p.state === 'queued')
-      .map((p) => ({
+    upNext: requested.map((p) => ({
         id: p.id,
         trackId: p.trackId,
         uri: p.uri,
@@ -238,7 +257,13 @@ function buildPublicState(core, settings, nowMs) {
         deviceName: p.deviceName,
         queuedAt: p.queuedAt,
       })),
-    recent: music.on ? core.recent.slice(0, 5) : [],
+    // After the requested songs: the playlist's next few, as Spotify reports them.
+    thenFromPlaylist: c && pb
+      ? core.upcoming
+          .filter((t, i, all) => t.uri !== c.uri && !requested.some((p) => p.uri === t.uri) && all.findIndex((x) => x.uri === t.uri) === i)
+          .slice(0, Math.max(0, UP_NEXT_SHOWN - requested.length))
+      : [],
+    recent: music.on ? core.recent.slice(0, RECENT_SHOWN) : [],
     schedule: scheduleStatus(nowMs, settings),
     updatedAt: nowMs,
   };
@@ -275,6 +300,7 @@ module.exports = {
   applyObservation,
   reconcileWithQueue,
   addLike,
+  setUpcoming,
   buildPublicState,
   shouldPublish,
   markPublished,

@@ -3,6 +3,7 @@
 // Warehouse playlists: the newest weekly favourites plus the ones admins add. Everyone
 // can open them and queue songs one at a time. The host's own playlists never appear here.
 
+const { logger } = require('firebase-functions');
 const spotify = require('./spotify');
 const store = require('./store');
 const weekly = require('./weekly');
@@ -56,6 +57,33 @@ async function setDefault(id) {
   await store.patchSettings({ defaultPlaylistId: id });
 }
 
+// Saved song counts follow Spotify, where admins can also edit the playlists. counts maps
+// playlist id -> Spotify's total; settings are only written when something changed.
+async function applyCounts(counts) {
+  const changed = (p, id) => counts.has(id) && Number.isInteger(counts.get(id)) && p.trackCount !== counts.get(id);
+  const cached = await store.getSettings();
+  if (!(cached.weeklyPlaylists || []).some((p) => changed(p, p.playlistId)) && !(cached.warehousePlaylists || []).some((p) => changed(p, p.id))) return;
+  const settings = await store.getSettings({ fresh: true });
+  await store.patchSettings({
+    weeklyPlaylists: (settings.weeklyPlaylists || []).map((p) => (changed(p, p.playlistId) ? { ...p, trackCount: counts.get(p.playlistId) } : p)),
+    warehousePlaylists: (settings.warehousePlaylists || []).map((p) => (changed(p, p.id) ? { ...p, trackCount: counts.get(p.id) } : p)),
+  });
+}
+
+const noteCount = (id, total) =>
+  applyCounts(new Map([[id, total]])).catch((err) => logger.warn('Could not update a song count', { err: err.message }));
+
+// Before the admin page lists the playlists: check each readable one's count with Spotify.
+async function refreshCounts(settings) {
+  const ids = warehouseList(settings).filter((p) => p.browsable).map((p) => p.id);
+  const results = await Promise.allSettled(ids.map((id) => spotify.playlistItems(id, 0, 1)));
+  const counts = new Map();
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value && Number.isInteger(r.value.total)) counts.set(ids[i], r.value.total);
+  });
+  await applyCounts(counts).catch((err) => logger.warn('Could not update song counts', { err: err.message }));
+}
+
 async function fetchPage(id, offset) {
   const key = `${id}:${offset}`;
   const hit = pageCache.get(key);
@@ -67,6 +95,7 @@ async function fetchPage(id, offset) {
     .filter(Boolean);
   const page = { tracks, total: (data && data.total) || tracks.length, more: Boolean(data && data.next) };
   pageCache.set(key, { at: Date.now(), page });
+  if (data && Number.isInteger(data.total)) await noteCount(id, data.total);
   return page;
 }
 
@@ -130,4 +159,4 @@ async function remove(id) {
   forget(id);
 }
 
-module.exports = { warehouseList, adminList, setDefault, tracksFor, add, remove, forget };
+module.exports = { warehouseList, adminList, setDefault, refreshCounts, noteCount, tracksFor, add, remove, forget };

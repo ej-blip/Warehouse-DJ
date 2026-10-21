@@ -84,8 +84,12 @@ async function goOffHours(settings) {
   });
 }
 
-// Read Spotify's playback state into private/core and public/state.
-async function sync({ deep = false } = {}) {
+// How long Spotify's "what's next" list is trusted before it's checked again.
+const UPCOMING_MAX_AGE_MS = 2 * 60000;
+
+// Read Spotify's playback state into private/core and public/state. `refreshQueue` also
+// re-reads what's coming next (after a shuffle change, for example).
+async function sync({ deep = false, refreshQueue = false } = {}) {
   const settings = await store.getSettings();
   if (!musicOn(settings)) {
     await goOffHours(settings);
@@ -100,20 +104,30 @@ async function sync({ deep = false } = {}) {
   }
   const res = await store.mutateCore((c) => {
     c.spotify = { connected: true, needsReauth: false };
-    return core.applyObservation(c, obs);
+    return { ...core.applyObservation(c, obs), upcomingAge: obs.at - (c.upcomingAt || 0) };
   });
-  if (deep || res.resumedAfterLongPause) {
+  const needReconcile = deep || res.resumedAfterLongPause;
+  const needUpcoming = Boolean(obs.onSpeaker && obs.item) &&
+    (needReconcile || refreshQueue || res.trackChanged || res.upcomingAge >= UPCOMING_MAX_AGE_MS);
+  if (needReconcile || needUpcoming) {
     try {
-      await reconcile({ allowReAdd: res.resumedAfterLongPause, speakerId: obs.speaker.id });
+      let q = await spotify.queue();
+      if (needReconcile) {
+        const plan = await reconcile({ allowReAdd: res.resumedAfterLongPause, speakerId: obs.speaker.id, q });
+        if (plan.reAdd.length) q = await spotify.queue();
+      }
+      if (needUpcoming) {
+        const tracks = ((q && q.queue) || []).map(spotify.normalizeTrack).filter(Boolean);
+        await store.mutateCore((c) => core.setUpcoming(c, tracks, Date.now()));
+      }
     } catch (err) {
-      logger.warn('Queue reconcile failed', { err: err.message });
+      logger.warn('Queue check failed', { err: err.message });
     }
   }
   return { obs, ...res };
 }
 
-async function reconcile({ allowReAdd, speakerId }) {
-  const q = await spotify.queue();
+async function reconcile({ allowReAdd, speakerId, q }) {
   if (!q || !q.currently_playing) return { reAdd: [], dropped: [] };
   const uris = (q.queue || []).map((t) => t && t.uri).filter(Boolean);
   const plan = await store.mutateCore((c, { now }) => core.reconcileWithQueue(c, uris, now, { allowReAdd }));
@@ -210,7 +224,7 @@ async function control(action, { admin = false } = {}) {
   }
   // Spotify takes a moment to report the new state.
   await sleep(800);
-  return sync().catch((err) => logger.warn('Sync after control failed', { err: err.message }));
+  return sync({ refreshQueue: action !== 'pause' }).catch((err) => logger.warn('Sync after control failed', { err: err.message }));
 }
 
 // Play a playlist now. It doesn't change the playlist music starts from by default.
@@ -229,7 +243,7 @@ async function playPlaylist(playlist) {
   }
   await store.patchSettings({ lastPlayed: { uri: playlist.uri, name: (known && known.name) || playlist.name } });
   await sleep(800);
-  return sync().catch(() => null);
+  return sync({ refreshQueue: true }).catch(() => null);
 }
 
 async function setLoop(on) {
@@ -251,7 +265,7 @@ async function setShuffle(on) {
     throw toUserError(err);
   });
   await sleep(500);
-  return sync().catch(() => null);
+  return sync({ refreshQueue: true }).catch(() => null);
 }
 
 // ---- queueing ---------------------------------------------------------------

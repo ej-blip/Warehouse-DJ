@@ -167,8 +167,10 @@ async function setArchived(id, archive) {
 async function readAll(id) {
   const uris = [];
   const tracks = [];
+  let total = null;
   for (let offset = 0; offset < FAVOURITES_MAX_TRACKS * 2; offset += PLAYLIST_PAGE_SIZE) {
     const data = await spotify.playlistItems(id, offset);
+    if (data && Number.isInteger(data.total)) total = data.total;
     for (const entry of (data && data.items) || []) {
       const raw = entry && (entry.item || entry.track);
       if (!raw || !raw.uri) continue;
@@ -178,17 +180,20 @@ async function readAll(id) {
     }
     if (!(data && data.next)) break;
   }
-  return { uris, tracks };
+  return { uris, tracks, total };
 }
 
 async function songs(id) {
   const settings = await store.getSettings({ fresh: true });
   const playlist = findWeekly(settings, id);
+  let all;
   try {
-    return { playlist, tracks: (await readAll(id)).tracks };
+    all = await readAll(id);
   } catch (err) {
     throw toUserError(err);
   }
+  if (all.total !== null) await playlists.noteCount(id, all.total);
+  return { playlist: { ...playlist, trackCount: all.total ?? playlist.trackCount }, tracks: all.tracks };
 }
 
 // Edits rewrite the whole list in one go, the same way the playlist was made.

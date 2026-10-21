@@ -137,6 +137,8 @@ test('starting playlist plays on the speaker and shows up on the iPads', async (
   assert.equal(pub.nowPlaying.name, 'Base One');
   assert.equal(pub.nowPlaying.requestedBy, null);
   assert.equal(pub.context.name, 'Warehouse Mix');
+  // Up next also shows what the playlist plays next, as Spotify reports it.
+  assert.deepEqual(pub.thenFromPlaylist.map((t) => t.name), ['Base Two', 'Base Three']);
   assert.equal(pub.speaker.status, 'online');
   assert.equal(pub.spotify.connected, true);
 });
@@ -333,6 +335,15 @@ test('music starts from the newest weekly favourites unless an admin switches an
   // Only playlists on the list can be switched on; null switches back to the newest.
   assert.equal((await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: 'z'.repeat(22) } })).status, 404);
   assert.equal((await call('PUT', '/api/admin/default-playlist', { admin: ownerToken, body: { id: null } })).body.starting.id, two.id);
+});
+
+test('song counts follow edits made in Spotify itself', async () => {
+  const [two] = (await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists;
+  fake.state.playlists[two.id].uris.push(fake.catalogue[2].uri); // added in the Spotify app
+  const after = (await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists[0];
+  assert.equal(after.trackCount, two.trackCount + 1);
+  fake.state.playlists[two.id].uris.pop();
+  assert.equal((await call('GET', '/api/admin/warehouse-playlists', { admin: ownerToken })).body.playlists[0].trackCount, two.trackCount);
 });
 
 test('admins can add and remove songs on a weekly favourites playlist', async () => {

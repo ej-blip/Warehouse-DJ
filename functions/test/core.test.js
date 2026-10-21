@@ -187,6 +187,20 @@ test('outside music hours the iPads see nothing about what is or was playing', (
   assert.equal(after.speaker.status, 'unknown');
 });
 
+test('up next fills with the playlist songs Spotify says come next, up to five in all', () => {
+  const c = core.emptyCore();
+  const settings = { ...DEFAULT_SETTINGS };
+  core.applyObservation(c, observe(T0, 'a', { progressMs: 1000 }));
+  core.reserve(c, entry('r1', 'b'));
+  core.confirm(c, 'r1');
+  const t = (id) => ({ id, uri: `spotify:track:${id}`, name: id, artists: [], imageUrl: null, durationMs: 1 });
+  // Spotify's list starts with the requested song, can repeat the current one, and repeats songs.
+  core.setUpcoming(c, ['b', 'a', 'p1', 'p2', 'p1', 'p3', 'p4', 'p5', 'p6'].map(t), T0);
+  const pub = core.buildPublicState(c, settings, T0);
+  assert.deepEqual(pub.upNext.map((p) => p.trackId), ['b']);
+  assert.deepEqual(pub.thenFromPlaylist.map((p) => p.trackId), ['p1', 'p2', 'p3', 'p4']);
+});
+
 test('recently played starts empty each day', () => {
   const c = core.emptyCore();
   core.applyObservation(c, observe(T0, 'a'));

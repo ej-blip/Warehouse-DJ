@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0e1013">
+  <meta name="theme-color" content="#0b4f47">
   <!-- Each iPad's link carries its secret; never send it to other sites. -->
   <meta name="referrer" content="no-referrer">
   <!-- Added to the Home Screen, this opens full screen with the iPad's own link (no manifest,
@@ -15,6 +15,9 @@
   <link rel="apple-touch-icon" href="/img/icon-180.png">
   <link rel="icon" type="image/png" href="/img/icon-180.png">
   <title>Warehouse DJ</title>
+  <!-- Apply this device's theme before anything draws. -->
+  <script>try { var t = localStorage.getItem('wdj.theme'); if (t === 'teal' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+  <link rel="preload" href="/fonts/outfit-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
@@ -36,46 +39,45 @@
 
   <main class="wrap" id="app" hidden>
     <div class="banners" id="banners"></div>
-    <div class="grid player">
-      <div class="col col-left">
-        <section class="card" aria-labelledby="now-h">
-          <h2 id="now-h">Now playing</h2>
-          <div id="now"></div>
-        </section>
+    <div class="player-grid">
+      <section class="card now-card area-now" aria-labelledby="now-h">
+        <h2 id="now-h" class="sr">Now playing</h2>
+        <div id="now"></div>
+      </section>
+      <div class="col area-lists">
         <section class="card" aria-labelledby="next-h">
           <h2 id="next-h">Up next</h2>
           <div id="up-next"></div>
-        </section>
-      </div>
-      <div class="col">
-        <section class="card" aria-labelledby="search-h">
-          <h2 id="search-h">Add a song</h2>
-          <div id="quota" class="quota"></div>
-          <div class="tabs" id="modes">
-            <button class="btn small" type="button" data-mode="song" aria-pressed="true">Song</button>
-            <button class="btn small" type="button" data-mode="artist" aria-pressed="false">Artist</button>
-            <button class="btn small" type="button" data-mode="genre" aria-pressed="false">Genre</button>
-            <button class="btn small" type="button" data-mode="playlists" aria-pressed="false">Playlists</button>
-          </div>
-          <div id="playlist-view" hidden></div>
-          <form class="search" id="search-form" role="search">
-            <input id="search-input" type="search" placeholder="Search songs" autocomplete="off"
-                   autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Search">
-            <button class="btn" type="button" id="search-clear" hidden>Clear</button>
-          </form>
-          <ul class="list" id="results"></ul>
-          <button class="btn more" id="more" hidden>Show more</button>
         </section>
         <section class="card" aria-labelledby="recent-h">
           <h2 id="recent-h">Recently played</h2>
           <ul class="list" id="recent"></ul>
         </section>
       </div>
+      <section class="card area-search" aria-labelledby="search-h">
+        <h2 id="search-h">Add a song</h2>
+        <div id="quota" class="quota"></div>
+        <div class="tabs" id="modes">
+          <button class="btn small" type="button" data-mode="song" aria-pressed="true">Song</button>
+          <button class="btn small" type="button" data-mode="artist" aria-pressed="false">Artist</button>
+          <button class="btn small" type="button" data-mode="genre" aria-pressed="false">Genre</button>
+          <button class="btn small" type="button" data-mode="playlists" aria-pressed="false">Playlists</button>
+        </div>
+        <div id="playlist-view" hidden></div>
+        <form class="search" id="search-form" role="search">
+          <input id="search-input" type="search" placeholder="Search songs" autocomplete="off"
+                 autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Search">
+          <button class="btn" type="button" id="search-clear" hidden>Clear</button>
+        </form>
+        <ul class="list" id="results"></ul>
+        <button class="btn more" id="more" hidden>Show more</button>
+      </section>
     </div>
   </main>
 
   <footer class="footer">
     <a class="spotify-credit" href="https://open.spotify.com" target="_blank" rel="noopener">Music from <img src="/img/spotify-logo-white.png" alt="Spotify" width="80" height="22"></a>
+    <button class="theme-toggle" type="button" id="theme-toggle">Theme: Auto</button>
     <a class="admin-link" href="/admin">Admin</a>
   </footer>
   <script type="module" src="/js/app.js"></script>

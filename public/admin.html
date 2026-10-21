@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0e1013">
+  <meta name="theme-color" content="#0b4f47">
   <!-- Each iPad's link carries its secret; never send it to other sites. -->
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
   <link rel="icon" type="image/png" href="/img/icon-180.png">
   <title>Warehouse DJ Admin</title>
+  <script>try { var t = localStorage.getItem('wdj.theme'); if (t === 'teal' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+  <link rel="preload" href="/fonts/outfit-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
@@ -179,6 +181,7 @@
 
   <footer class="footer">
     <a class="spotify-credit" href="https://open.spotify.com" target="_blank" rel="noopener">Music from <img src="/img/spotify-logo-white.png" alt="Spotify" width="80" height="22"></a>
+    <button class="theme-toggle" type="button" id="theme-toggle">Theme: Auto</button>
   </footer>
   <script type="module" src="/js/admin.js"></script>
 </body>

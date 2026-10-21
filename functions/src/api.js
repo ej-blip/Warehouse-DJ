@@ -310,6 +310,7 @@ app.get('/api/admin/search', requireAdmin, wrap(async (req, res) => {
 }));
 
 app.get('/api/admin/warehouse-playlists', requireAdmin, wrap(async (req, res) => {
+  await playlists.refreshCounts(await store.getSettings({ fresh: true }));
   res.json(playlists.adminList(await store.getSettings({ fresh: true })));
 }));
 

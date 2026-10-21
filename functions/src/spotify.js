@@ -228,6 +228,7 @@ function normalizeTrack(t) {
   if (!t || !t.id || (t.type && t.type !== 'track')) return null; // local files have no id
   const images = (t.album && t.album.images) || [];
   const image = images.find((i) => i.width && i.width >= 200 && i.width <= 320) || images[1] || images[0];
+  const large = images.find((i) => i.width && i.width >= 500) || image;
   return {
     id: t.id,
     uri: t.uri || `spotify:track:${t.id}`,
@@ -235,6 +236,7 @@ function normalizeTrack(t) {
     artists: (t.artists || []).map((a) => a.name).filter(Boolean),
     album: t.album ? t.album.name : '',
     imageUrl: image ? image.url : null,
+    imageLarge: large ? large.url : null, // for the big now-playing artwork
     spotifyUrl: (t.external_urls && t.external_urls.spotify) || `https://open.spotify.com/track/${t.id}`,
     durationMs: t.duration_ms || 0,
     explicit: Boolean(t.explicit),

@@ -1,7 +1,7 @@
 // The worker iPad page: now playing, up next, search and queue, play/pause/skip, likes.
 // Live state comes from Firestore (public/state); every action goes through /api.
 
-import { el, $, art, toast, duration, clockAt, artistLine, api, storage, watchDoc } from './common.js';
+import { el, $, art, toast, duration, clockAt, artistLine, api, storage, watchDoc, wireThemeToggle, icon } from './common.js';
 
 const TOKEN_KEY = 'wdj.deviceToken';
 
@@ -138,43 +138,54 @@ function renderNow() {
   const np = state.pub && state.pub.nowPlaying;
   const deviceId = state.device && state.device.id;
   const liked = np && deviceId && np.likedBy.includes(deviceId);
+  const playing = Boolean(np && np.isPlaying);
 
-  const playPause = el('button', {
-    class: 'btn primary',
-    id: 'btn-playpause',
-    disabled: state.busy.has('playpause') || !canControl(),
-    onclick: () => control(np && np.isPlaying ? 'pause' : 'play'),
-  }, np && np.isPlaying ? '❚❚ Pause' : '▶ Play');
-  const skip = el('button', { class: 'btn', disabled: state.busy.has('skip') || !np || !canControl(), onclick: () => control('skip') }, '⏭ Skip');
   const like = el('button', {
-    class: `btn${liked ? ' liked' : ''}`,
+    class: `ctl${liked ? ' liked' : ''}`,
     disabled: !np || liked || state.busy.has('like') || !canControl(),
     onclick: likeCurrent,
     'aria-label': liked ? 'Liked' : 'Like this song',
-  }, `👍 ${np ? np.likes : ''}`.trim());
+  }, icon('thumb'), np && np.likes ? el('span', { class: 'ctl-count' }, String(np.likes)) : null);
+  const playPause = el('button', {
+    class: 'ctl ctl-main',
+    id: 'btn-playpause',
+    disabled: state.busy.has('playpause') || !canControl(),
+    onclick: () => control(playing ? 'pause' : 'play'),
+    'aria-label': playing ? 'Pause' : 'Play',
+  }, icon(playing ? 'pause' : 'play'));
+  const skip = el('button', {
+    class: 'ctl',
+    disabled: state.busy.has('skip') || !np || !canControl(),
+    onclick: () => control('skip'),
+    'aria-label': 'Skip',
+  }, icon('next'));
+  const controls = el('div', { class: 'controls' }, like, playPause, skip);
 
   if (!np) {
-    box.replaceChildren(el('div', { class: 'now' }, el('div', { class: 'empty' }, musicOn() ? 'Nothing playing right now.' : "Music's off outside music hours."), el('div', { class: 'controls' }, playPause, skip, like)));
+    box.replaceChildren(el('div', { class: 'now' },
+      el('div', { class: 'now-top' }),
+      el('div', { class: 'now-art' }, el('div', { class: 'art large' }, icon('note'))),
+      el('div', { class: 'now-info' }, el('div', { class: 'empty' }, musicOn() ? 'Nothing playing right now.' : "Music's off outside music hours.")),
+      controls,
+    ));
     return;
   }
 
   const pos = progressOf(np);
   box.replaceChildren(
     el('div', { class: 'now' },
-      el('div', { class: 'now-main' },
-        art(np.imageUrl),
-        el('div', {},
-          el('div', { class: 'title' }, np.explicit ? el('span', { class: 'badge', title: 'Explicit' }, 'E') : null, np.name),
-          el('div', { class: 'artists' }, artistLine(np.artists)),
-          el('div', { class: 'by' }, np.requestedBy ? `Requested by ${np.requestedBy}` : fromPlaylistText()),
-        ),
+      el('div', { class: 'now-top' }, el('span', { class: 'pill by' }, np.requestedBy ? `Requested by ${np.requestedBy}` : fromPlaylistText())),
+      el('div', { class: 'now-art' }, art(np.imageLarge || np.imageUrl, 'art large')),
+      el('div', { class: 'now-info' },
+        el('div', { class: 'title' }, np.explicit ? el('span', { class: 'badge', title: 'Explicit' }, 'E') : null, np.name),
+        el('div', { class: 'artists' }, artistLine(np.artists)),
       ),
       el('div', { class: 'progress' },
-        el('div', { class: 'bar' }, el('div', { id: 'bar-fill', style: `width:${(pos / np.durationMs) * 100}%` })),
         el('div', { class: 'times' }, el('span', { id: 'time-pos' }, duration(pos)), el('span', {}, duration(np.durationMs))),
+        el('div', { class: 'bar' }, el('div', { id: 'bar-fill', style: `width:${(pos / np.durationMs) * 100}%` })),
       ),
-      el('div', { class: 'controls' }, playPause, skip, like),
-      el('a', { href: np.spotifyUrl, target: '_blank', rel: 'noopener', class: 'hint' }, 'Open in Spotify'),
+      controls,
+      el('a', { href: np.spotifyUrl, target: '_blank', rel: 'noopener', class: 'hint now-link' }, 'Open in Spotify'),
     ),
   );
 }
@@ -197,34 +208,39 @@ function tickProgress() {
   $('#time-pos').textContent = duration(pos);
 }
 
+function songRow(t, num, tag, cls = 'row') {
+  return el('li', { class: cls },
+    num ? el('span', { class: 'num' }, num) : null,
+    art(t.imageUrl, 'art small'),
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, artistLine(t.artists))),
+    tag ? el('span', { class: 'tag' }, tag) : null,
+  );
+}
+
+// Requested songs first, then what Spotify says the playlist plays next.
 function renderUpNext() {
   const box = $('#up-next');
-  const list = (state.pub && state.pub.upNext) || [];
-  const then = state.pub && state.pub.context && state.pub.context.name;
-  const rows = list.map((t, i) =>
-    el('li', { class: 'row' },
-      el('span', { class: 'num' }, i + 1),
-      art(t.imageUrl, 'art small'),
-      el('div', { class: 'meta' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, artistLine(t.artists))),
-      el('span', { class: 'tag' }, t.deviceName),
-    ));
-  box.replaceChildren(
-    rows.length ? el('ul', { class: 'list' }, rows) : el('div', { class: 'empty' }, 'No requested songs yet.'),
-    musicOn() ? el('p', { class: 'hint' }, rows.length ? `Then back to ${then || 'the playlist'}.` : `Playing ${then || 'the playlist'} until someone adds a song.`) : null,
-  );
+  const requested = (state.pub && state.pub.upNext) || [];
+  const fromPlaylist = (state.pub && state.pub.thenFromPlaylist) || [];
+  const playlist = (state.pub && state.pub.context && state.pub.context.name) || 'the playlist';
+  const parts = [];
+  if (requested.length) {
+    parts.push(el('ul', { class: 'list' }, requested.map((t, i) => songRow(t, i + 1, t.deviceName, 'row requested'))));
+  } else if (musicOn()) {
+    parts.push(el('div', { class: 'empty' }, 'No requested songs yet. Add one with the search.'));
+  }
+  if (fromPlaylist.length) {
+    parts.push(el('div', { class: 'list-label' }, `${requested.length ? 'Then from' : 'Coming up from'} ${playlist}`));
+    parts.push(el('ul', { class: 'list' }, fromPlaylist.map((t, i) => songRow(t, requested.length + i + 1, null))));
+  }
+  if (!parts.length) parts.push(el('div', { class: 'empty' }, "Music's off outside music hours."));
+  box.replaceChildren(...parts);
 }
 
 function renderRecent() {
   const list = (state.pub && state.pub.recent) || [];
   $('#recent').replaceChildren(
-    ...(list.length
-      ? list.map((t) =>
-          el('li', { class: 'row' },
-            art(t.imageUrl, 'art small'),
-            el('div', { class: 'meta' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, artistLine(t.artists))),
-            t.requestedBy ? el('span', { class: 'tag' }, t.requestedBy) : null,
-          ))
-      : [el('li', { class: 'empty' }, 'Nothing yet today.')]),
+    ...(list.length ? list.map((t) => songRow(t, null, t.requestedBy)) : [el('li', { class: 'empty' }, 'Nothing yet today.')]),
   );
 }
 
@@ -495,6 +511,7 @@ async function loadPlaylistSongs({ append = false } = {}) {
 // ---- start ----------------------------------------------------------------
 
 async function start() {
+  wireThemeToggle($('#theme-toggle'));
   setupThisDevice();
   state.token = readToken();
   if (!state.token) {

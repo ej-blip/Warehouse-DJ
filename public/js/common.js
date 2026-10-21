@@ -75,6 +75,48 @@ export function ago(ms) {
 
 export const artistLine = (artists) => (artists || []).join(', ');
 
+// ---- theme ------------------------------------------------------------------
+
+// Auto follows the device's Light/Dark setting; Teal or Dark pins one on this device.
+const THEME_KEY = 'wdj.theme';
+const THEMES = ['auto', 'teal', 'dark'];
+const THEME_NAMES = { auto: 'Auto', teal: 'Teal', dark: 'Dark' };
+
+export function wireThemeToggle(button) {
+  if (!button) return;
+  const current = () => (THEMES.includes(storage.get(THEME_KEY)) ? storage.get(THEME_KEY) : 'auto');
+  const apply = (theme) => {
+    if (theme === 'auto') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    button.textContent = `Theme: ${THEME_NAMES[theme]}`;
+  };
+  apply(current());
+  button.addEventListener('click', () => {
+    const next = THEMES[(THEMES.indexOf(current()) + 1) % THEMES.length];
+    if (next === 'auto') storage.remove(THEME_KEY);
+    else storage.set(THEME_KEY, next);
+    apply(next);
+  });
+}
+
+// ---- icons ------------------------------------------------------------------
+
+const ICONS = {
+  play: '<path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l10.8-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14z"/>',
+  pause: '<rect x="6" y="5" width="4.2" height="14" rx="1.3"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.3"/>',
+  next: '<path d="M4.5 5.6v12.8a1 1 0 0 0 1.56.83l9.1-6.4a1 1 0 0 0 0-1.66l-9.1-6.4A1 1 0 0 0 4.5 5.6z"/><rect x="16.6" y="5" width="2.9" height="14" rx="1.4"/>',
+  thumb: '<path d="M2 21h4V9H2v12zm20-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13.17 1 6.59 7.59C6.22 7.95 6 8.45 6 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/>',
+  note: '<path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>',
+};
+
+export function icon(name) {
+  const span = document.createElement('span');
+  span.className = 'icon';
+  span.setAttribute('aria-hidden', 'true');
+  span.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[name]}</svg>`;
+  return span;
+}
+
 // ---- API ----------------------------------------------------------------
 
 export async function api(path, { method = 'GET', body, headers = {} } = {}) {
