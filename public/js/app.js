@@ -208,12 +208,11 @@ function tickProgress() {
   $('#time-pos').textContent = duration(pos);
 }
 
-function songRow(t, num, tag, cls = 'row') {
+function songRow(t, num, cls = 'row') {
   return el('li', { class: cls },
     num ? el('span', { class: 'num' }, num) : null,
     art(t.imageUrl, 'art small'),
     el('div', { class: 'meta' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, artistLine(t.artists))),
-    tag ? el('span', { class: 'tag' }, tag) : null,
   );
 }
 
@@ -225,13 +224,14 @@ function renderUpNext() {
   const playlist = (state.pub && state.pub.context && state.pub.context.name) || 'the playlist';
   const parts = [];
   if (requested.length) {
-    parts.push(el('ul', { class: 'list' }, requested.map((t, i) => songRow(t, i + 1, t.deviceName, 'row requested'))));
+    parts.push(el('div', { class: 'list-label first' }, 'Requested'));
+    parts.push(el('ul', { class: 'list' }, requested.map((t, i) => songRow(t, i + 1, 'row requested'))));
   } else if (musicOn()) {
     parts.push(el('div', { class: 'empty' }, 'No requested songs yet. Add one with the search.'));
   }
   if (fromPlaylist.length) {
     parts.push(el('div', { class: 'list-label' }, `${requested.length ? 'Then from' : 'Coming up from'} ${playlist}`));
-    parts.push(el('ul', { class: 'list' }, fromPlaylist.map((t, i) => songRow(t, requested.length + i + 1, null))));
+    parts.push(el('ul', { class: 'list' }, fromPlaylist.map((t, i) => songRow(t, requested.length + i + 1))));
   }
   if (!parts.length) parts.push(el('div', { class: 'empty' }, "Music's off outside music hours."));
   box.replaceChildren(...parts);
@@ -240,7 +240,7 @@ function renderUpNext() {
 function renderRecent() {
   const list = (state.pub && state.pub.recent) || [];
   $('#recent').replaceChildren(
-    ...(list.length ? list.map((t) => songRow(t, null, t.requestedBy)) : [el('li', { class: 'empty' }, 'Nothing yet today.')]),
+    ...(list.length ? list.map((t) => songRow(t, null)) : [el('li', { class: 'empty' }, 'Nothing yet today.')]),
   );
 }
 

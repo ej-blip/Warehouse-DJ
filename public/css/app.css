@@ -281,6 +281,7 @@ div.art.large svg { width: 100%; height: 100%; fill: currentColor; }
 .row .sub { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
 .row .why { color: var(--muted); font-size: 13px; max-width: 160px; text-align: right; }
 .list-label { margin: 14px 0 2px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.list-label.first { margin-top: 0; }
 .badge {
   display: inline-block; font-size: 11px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
   background: var(--muted); color: var(--bg-1); vertical-align: 2px; margin-right: 4px;

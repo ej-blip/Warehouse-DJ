@@ -161,7 +161,7 @@ To add more admins, the owner adds them under **Admins**, giving each person the
 - **Breaks.** Queueing closes at 10:20am and 1:20pm. The music pauses and starts again at 10:40am and 2:00pm, and songs queued before the break are still there afterwards. If Spotify lost them because iOS closed the app, the backend adds them back when the music restarts.
 - **Music hours.** Before 8:00am and after 4:00pm, the iPads show a "Music hours" message and can't search, queue or control the music. Admins can still control it from the admin page. "Recently played" starts empty each morning.
 - **Admins** can also skip, loop or shuffle the playlist, change the starting playlist and change any rule.
-- **Up next** shows requested songs first (with the iPad that asked), then the next few songs Spotify says the playlist will play. **Recently played** shows the last 3.
+- **Up next** shows requested songs first, then the next few songs Spotify says the playlist will play. The song playing now says which iPad requested it. **Recently played** shows the last 3.
 - **Theme.** The button at the bottom of the page switches between **Auto** (follows the iPad's Light/Dark setting), **Teal** and **Dark**. Each iPad remembers its own choice. The colours are set in one place at the top of `public/css/app.css`, so the look is easy to change later.
 - **Pressing Play after a pause** carries on from the same song. When there's nothing to carry on from, such as first thing in the morning, music starts from the **starting playlist**, on shuffle from a random song.
 
