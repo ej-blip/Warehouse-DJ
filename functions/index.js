@@ -17,9 +17,9 @@ exports.api = onRequest(
   app,
 );
 
-// Every minute. During music hours it syncs what's playing and handles break pauses;
-// outside them it only keeps the iPads' banners current and never contacts Spotify.
-// It sometimes waits up to ~50 seconds for a song to end, so it runs on a small CPU
+// Every minute. During music hours it handles break pauses and checks what's playing
+// every 15 seconds for most of the minute; outside them it only keeps the iPads' banners
+// current and never contacts Spotify. Because it's mostly waiting, it runs on a small CPU
 // share to stay inside the free allowance.
 exports.tick = onSchedule(
   {

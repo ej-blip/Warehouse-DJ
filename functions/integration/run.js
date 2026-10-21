@@ -333,6 +333,24 @@ test('a break pauses music even when it is playing on a device other than the ch
   fake.state.devices[0].is_active = true;
 });
 
+test('during music hours the minute task keeps checking Spotify', async () => {
+  const checks = () => fake.state.calls.filter((c) => c === 'GET /v1/me/player').length;
+  const before = checks();
+  const started = Date.now();
+  await mods.playback.tick({ pollMs: 150, budgetMs: 500 });
+  assert.ok(Date.now() - started < 3000, 'finishes within its budget');
+  assert.ok(checks() - before >= 4, `checked ${checks() - before} times`);
+});
+
+test('choosing a speaker checks it straight away', async () => {
+  fake.state.devices.push({ id: 'dev-laptop', name: 'Laptop', type: 'Computer', is_active: false, is_restricted: false, is_private_session: false });
+  assert.equal((await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { speakerDeviceName: 'Laptop' } })).status, 200);
+  assert.equal((await publicState()).speaker.name, 'Laptop');
+  assert.equal((await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { speakerDeviceName: 'Clock-in iPad' } })).status, 200);
+  assert.equal((await publicState()).speaker.name, 'Clock-in iPad');
+  fake.state.devices.pop();
+});
+
 test('outside music hours the app leaves Spotify alone and the iPads see nothing', async () => {
   const { localParts } = require('../src/time');
   const today = localParts(Date.now()).weekday;

@@ -253,6 +253,8 @@ app.put('/api/admin/settings', requireAdmin, wrap(async (req, res) => {
   if (result.errors) throw new UserError('bad_settings', result.errors.join(' '));
   await store.saveSettings(result.settings);
   logger.info('Settings changed', { by: req.admin.name });
+  // A newly chosen speaker should show as reachable (or not) straight away.
+  if (current.speakerDeviceName !== result.settings.speakerDeviceName) await playback.sync().catch(() => null);
   res.json({ settings: result.settings });
 }));
 

@@ -14,7 +14,7 @@ A shared music queue for the IND Technology warehouse. One Spotify Premium accou
 | Live state | One Firestore document with what's playing, what's next and whether queueing is open. Every iPad listens to it | Melbourne (`australia-southeast2`) |
 | Pages | Firebase Hosting | Google's CDN |
 
-The iPads never log in to Spotify. They can only read the live-state document, and every action goes through the backend. During music hours the backend checks Spotify once a minute, and again the moment each song ends, so changes made by hand on the speaker iPad show up within a minute. **Outside music hours it doesn't contact Spotify at all**, and the iPads show nothing about what's playing.
+The iPads never log in to Spotify. They can only read the live-state document, and every action goes through the backend. During music hours the backend checks Spotify every 15 seconds, and again the moment each song ends, so changes made by hand on the speaker show up within about 15 seconds. **Outside music hours it doesn't contact Spotify at all**, and the iPads show nothing about what's playing.
 
 Searches go to Spotify as the app itself, not as the host account, so results aren't shaped by the host's own likes and listening history.
 
@@ -246,7 +246,7 @@ Your personal account must keep Premium while it owns the developer app. Alterna
 firebase.json            Hosting, the /api rewrite, emulator ports
 firestore.rules          iPads may read public/state only
 functions/
-  index.js               api (HTTP), tick (every minute; contacts Spotify only in music hours), weeklyFavourites (Sunday 8pm)
+  index.js               api (HTTP), tick (every minute, checking Spotify every 15 s; contacts Spotify only in music hours), weeklyFavourites (Sunday 8pm)
   src/config.js          region, time zone, Spotify client ID, default rules
   src/rules.js           the gatekeeper: schedule, quotas, song checks (pure functions)
   src/core.js            shared queue state and what the iPads see (pure functions)

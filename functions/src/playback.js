@@ -418,8 +418,14 @@ async function testBreak(seconds) {
   };
 }
 
+// Between the once-a-minute runs, check again every 15 seconds and just after each song
+// ends, so changes made on the speaker itself reach the iPads quickly.
+const POLL_MS = 15000;
+const TICK_BUDGET_MS = 50000;
+
 // Runs every minute. Outside music hours it only keeps the iPads' banners current.
-async function tick() {
+async function tick({ pollMs = POLL_MS, budgetMs = TICK_BUDGET_MS } = {}) {
+  const started = Date.now();
   const settings = await store.getSettings();
   if (!musicOn(settings)) {
     await goOffHours(settings);
@@ -440,15 +446,20 @@ async function tick() {
   }
 
   const deep = localParts(Date.now()).minute % 10 === 0;
-  const first = await sync({ deep });
-  // If the song ends within this minute, wait for it so the iPads update right away.
-  const o = first.obs;
-  if (o && o.playing && o.item) {
-    const remaining = o.item.durationMs - o.progressMs - (Date.now() - o.at);
-    if (remaining > 0 && remaining < 50000) {
-      await sleep(remaining + 1500);
-      await sync();
+  let res = await sync({ deep });
+  let nextPoll = started + pollMs;
+  for (;;) {
+    while (nextPoll <= Date.now()) nextPoll += pollMs;
+    let at = nextPoll;
+    const o = res.obs;
+    if (o && o.playing && o.item) {
+      const endsAt = o.at + o.item.durationMs - o.progressMs + 1500;
+      if (endsAt > Date.now() && endsAt < at) at = endsAt;
     }
+    if (at - started > budgetMs) return;
+    await sleep(at - Date.now());
+    res = await sync();
+    if (res.offHours) return;
   }
 }
 
