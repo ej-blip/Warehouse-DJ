@@ -68,6 +68,11 @@ If you don't use git, download the ZIP from the repository page on GitHub instea
 
 All the commands below are run from the `Warehouse-DJ` folder.
 
+**Always name the project.** The Firebase tools remember the last project each folder used, and that can override this repo's setting. On 18 October 2026 a deploy from this folder went into a different project, `ind-instruct`, and had to be cleaned up by hand. To stop that happening again:
+- Run `firebase use warehouse-dj-bd640` once in this folder. It only changes a setting on your computer.
+- Add `--project warehouse-dj-bd640` to every Firebase command, as the commands below do. That guarantees the right project even if the folder setting is wrong.
+- Before a deploy, `firebase use` should print `warehouse-dj-bd640`. Afterwards, the output should say `hosting[warehouse-dj-bd640]`.
+
 ### 3. Firebase console
 
 You've already switched to the Blaze plan and created Firestore in Melbourne. One more check:
@@ -89,13 +94,13 @@ Your own Spotify account owns the app, so you don't need to add any users. Spoti
 These go into Google Secret Manager, never into the code.
 
 ```sh
-firebase functions:secrets:set SPOTIFY_CLIENT_SECRET
+firebase functions:secrets:set SPOTIFY_CLIENT_SECRET --project warehouse-dj-bd640
 ```
 
 When asked, paste the **Client Secret** from the Spotify dashboard (**Settings → View client secret**).
 
 ```sh
-firebase functions:secrets:set ADMIN_SETUP_CODE
+firebase functions:secrets:set ADMIN_SETUP_CODE --project warehouse-dj-bd640
 ```
 
 Make up a code, such as three random words, and **save it in your password manager**. You need it to create the first admin, and later if the owner forgets their PIN.
@@ -103,12 +108,12 @@ Make up a code, such as three random words, and **save it in your password manag
 ### 6. Deploy
 
 ```sh
-firebase deploy
+firebase deploy --project warehouse-dj-bd640
 ```
 
 The first deploy takes about 5 minutes and switches on a few Google Cloud services. If it asks about a **cleanup policy** for container images, answer **yes** with **1 day**; that keeps storage free. When it finishes, it prints `Hosting URL: https://warehouse-dj-bd640.web.app`.
 
-To deploy updates later, run `firebase deploy` again.
+Updates now deploy by themselves from GitHub (see [Automatic deploys](#automatic-deploys)), so you shouldn't need to deploy by hand again. If you ever do, use the same command, with `--project warehouse-dj-bd640` on it.
 
 ### 7. Sign in and connect Spotify
 
