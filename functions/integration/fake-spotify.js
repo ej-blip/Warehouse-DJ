@@ -34,6 +34,8 @@ function createFakeSpotify() {
     makeTrack('base1', 'Base One'),
     makeTrack('base2', 'Base Two'),
     makeTrack('base3', 'Base Three'),
+    // Long titles must not push the Add button out of its box.
+    makeTrack('longname', "Don't Stop Me Now (Remastered 2011) - Live at Wembley Stadium, Extended Anniversary Version"),
   ];
   const byUri = new Map(catalogue.map((t) => [t.uri, t]));
   const mixPlaylist = { id: id22('mix'), uri: `spotify:playlist:${id22('mix')}`, name: 'Warehouse Mix', owner: { display_name: 'Host Account' }, images: [], items: { total: 3 } };

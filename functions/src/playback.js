@@ -399,6 +399,7 @@ async function resumeOn(settings, device) {
 // Pause when a break starts; resume when it ends, but only music we paused ourselves,
 // so a deliberate stop before the break stays stopped.
 async function handleBreaks(settings, nowMs) {
+  if (settings.testMode) return null;
   const lp = localParts(nowMs);
   if (!settings.days.includes(lp.weekday)) return null;
   const state = (await store.readCore()).breakState;
@@ -493,6 +494,8 @@ async function tick({ pollMs = POLL_MS, budgetMs = TICK_BUDGET_MS } = {}) {
 
   const deep = localParts(Date.now()).minute % 10 === 0;
   let res = await sync({ deep });
+  // Testing outside the real music hours: once a minute is plenty, and keeps server time low.
+  if (settings.testMode && !rules.musicStatus(Date.now(), { ...settings, testMode: false }).on) return;
   let nextPoll = started + pollMs;
   for (;;) {
     while (nextPoll <= Date.now()) nextPoll += pollMs;

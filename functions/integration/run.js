@@ -473,6 +473,25 @@ test('outside music hours the app leaves Spotify alone and the iPads see nothing
   assert.equal((await publicState()).music.on, true);
 });
 
+test('testing mode lets the iPads work outside music hours until an admin switches it off', async () => {
+  const { localParts } = mods.time;
+  const today = localParts(Date.now()).weekday;
+  const otherDays = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== today);
+  await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { days: otherDays } });
+  assert.equal((await call('GET', '/api/search?q=song', { device: ipad1 })).body.error, 'music_off');
+
+  assert.equal((await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { testMode: true } })).status, 200);
+  assert.equal((await call('GET', '/api/search?q=song', { device: ipad1 })).status, 200);
+  await mods.playback.sync();
+  const pub = await publicState();
+  assert.equal(pub.testMode, true);
+  assert.equal(pub.music.on, true);
+  assert.equal(await mods.playback.handleBreaks({ ...(await mods.store.getSettings({ fresh: true })), breaks: [{ start: '00:00', minutes: 1439 }] }, Date.now()), null);
+
+  await call('PUT', '/api/admin/settings', { admin: ownerToken, body: { testMode: false, days: [1, 2, 3, 4, 5, 6, 7] } });
+  assert.equal((await publicState()).testMode, false);
+});
+
 test('switched-off iPads cannot queue', async () => {
   const id = ipad2.split('.')[0];
   await call('PATCH', `/api/admin/devices/${id}`, { admin: ownerToken, body: { enabled: false } });

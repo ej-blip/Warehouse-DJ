@@ -99,6 +99,7 @@ function renderBanners() {
   const p = state.pub;
   const items = [];
   if (state.conn !== 'live') items.push(['warn', 'Reconnecting… showing the last known info.']);
+  if (p && p.testMode) items.push(['warn', 'Testing mode is on: time limits are off.']);
   if (state.device && !state.device.enabled) items.push(['bad', 'This iPad has been switched off by an admin.']);
   if (!musicOn()) {
     items.push(['info', p.music.message]);

@@ -187,6 +187,7 @@ function renderBanners() {
     if (s.pub.speaker.status === 'offline') items.push(['bad', "The speaker iPad isn't reachable. Open Spotify on it."]);
     if (s.pub.speaker.status === 'private') items.push(['warn', 'Spotify on the speaker iPad is in a Private Session. Turn it off.']);
   }
+  if (o.settings.testMode) items.push(['warn', 'Testing mode is on: music hours, queueing hours, work days and breaks are ignored. Switch it off under Rules before work.']);
   if (s.lists && !s.lists.starting) items.push(['info', 'No starting playlist yet. Make a weekly favourites playlist below, or add a playlist and switch on "Start here".']);
   $('#banners').replaceChildren(...items.map(([kind, text]) => el('div', { class: `banner ${kind}` }, text)));
 }
@@ -492,7 +493,7 @@ function renderRules() {
   $('#open').value = st.open;
   $('#close').value = st.close;
   $('#breaks').replaceChildren(...st.breaks.map(breakRow));
-  for (const key of ['autoPause', 'autoResume', 'allowExplicit']) $(`#${key}`).checked = st[key];
+  for (const key of ['autoPause', 'autoResume', 'allowExplicit', 'testMode']) $(`#${key}`).checked = st[key];
   for (const key of ['songsPerWindow', 'windowMinutes', 'queueCap', 'maxTrackMinutes', 'noRepeatHours']) $(`#${key}`).value = st[key];
 }
 
@@ -674,6 +675,8 @@ function wireMain() {
   });
   $('#pl-editor-close').addEventListener('click', closeEditor);
 
+  $('#testMode').addEventListener('change', (e) =>
+    act(null, () => saveSettings({ testMode: e.target.checked }, e.target.checked ? 'Testing mode on: time limits are off.' : 'Testing mode off: normal hours are back.')));
   $('#add-break').addEventListener('click', () => $('#breaks').append(breakRow()));
   $('#test-break').addEventListener('click', async (e) => {
     const status = $('#test-break-status');

@@ -270,15 +270,22 @@ div.art.large svg { width: 100%; height: 100%; fill: currentColor; }
 .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-text); }
 
 /* ---- lists ---- */
-.list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+/* One column that can't grow past the box, so a long title can't push buttons out. */
+.list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; padding: 0; list-style: none; }
 .row {
   display: flex; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--line);
   min-height: 62px;
 }
 .row:last-child { border-bottom: 0; }
 .row .meta { flex: 1; min-width: 0; }
-.row .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row .sub { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.row .name {
+  font-weight: 700; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; /* up to 2 lines, then "…" */
+}
+.row .sub {
+  color: var(--muted); font-size: 14px; overflow-wrap: anywhere; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
 .row .why { color: var(--muted); font-size: 13px; max-width: 160px; text-align: right; }
 .list-label { margin: 14px 0 2px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .list-label.first { margin-top: 0; }

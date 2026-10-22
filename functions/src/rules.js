@@ -22,7 +22,9 @@ function formatDays(days) {
 }
 
 // Music hours: the only time the app looks at Spotify or shows what's playing.
+// Testing mode (switched on by an admin) ignores every time rule until it's switched off.
 function musicStatus(nowMs, settings) {
+  if (settings.testMode) return { on: true, message: '' };
   const lp = localParts(nowMs);
   const start = parseClock(settings.musicStart);
   const end = parseClock(settings.musicEnd);
@@ -34,6 +36,7 @@ function musicStatus(nowMs, settings) {
 }
 
 function scheduleStatus(nowMs, settings) {
+  if (settings.testMode) return { open: true, state: 'testing', message: '', until: null };
   const lp = localParts(nowMs);
   const open = parseClock(settings.open);
   const close = parseClock(settings.close);
@@ -143,7 +146,7 @@ function checkQueueRequest({ nowMs, settings, device, track, core }) {
 
 const EDITABLE = [
   'days', 'musicStart', 'musicEnd', 'open', 'close', 'breaks', 'autoPause', 'autoResume', 'songsPerWindow', 'windowMinutes',
-  'queueCap', 'maxTrackMinutes', 'noRepeatHours', 'allowExplicit', 'speakerDeviceName',
+  'queueCap', 'maxTrackMinutes', 'noRepeatHours', 'allowExplicit', 'speakerDeviceName', 'testMode',
 ];
 
 function intInRange(value, min, max) {
@@ -198,7 +201,7 @@ function validateSettings(current, patch) {
     }
   }
 
-  for (const key of ['autoPause', 'autoResume', 'allowExplicit']) {
+  for (const key of ['autoPause', 'autoResume', 'allowExplicit', 'testMode']) {
     if (has(key)) {
       if (typeof patch[key] !== 'boolean') errors.push(`${key} must be on or off.`);
       else next[key] = patch[key];

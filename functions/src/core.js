@@ -215,6 +215,7 @@ function buildPublicState(core, settings, nowMs) {
   const requested = (music.on ? core.pending : []).filter((p) => p.state === 'queued');
   return {
     music,
+    testMode: Boolean(settings.testMode),
     spotify: { connected: core.spotify.connected, needsReauth: core.spotify.needsReauth },
     speaker: { status: music.on ? core.speaker.status : 'unknown', name: core.speaker.name || settings.speakerDeviceName || '' },
     nowPlaying: c && pb

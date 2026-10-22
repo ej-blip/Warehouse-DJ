@@ -58,6 +58,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   noRepeatHours: 2,
   allowExplicit: true,
   speakerDeviceName: '',
+  testMode: false, // admins' switch: ignore music hours, queueing hours, work days and breaks
   // [{ playlistId, uri, url, ownerId, number, name, label, madeAt, trackCount, archived, kept }]
   weeklyPlaylists: [],
   warehousePlaylists: [], // [{ id, uri, name, owner, imageUrl, browsable, trackCount }]

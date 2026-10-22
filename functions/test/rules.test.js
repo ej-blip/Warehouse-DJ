@@ -115,3 +115,17 @@ test('queueing outside music hours is refused, and queueing hours must sit insid
   assert.match(validateSettings(settings, { musicStart: '17:00' }).errors.join(' '), /start before they end/);
   assert.equal(validateSettings(settings, { musicStart: '07:00', open: '07:30' }).settings.open, '07:30');
 });
+
+test('testing mode ignores music hours, queueing hours, work days and breaks, but not the other limits', () => {
+  const { musicStatus } = require('../src/rules');
+  const testing = { ...settings, testMode: true };
+  const sunday11pm = Date.UTC(2026, 9, 25, 23, 0) - 11 * 3600000;
+  assert.equal(musicStatus(sunday11pm, settings).on, false);
+  assert.equal(musicStatus(sunday11pm, testing).on, true);
+  assert.equal(scheduleStatus(at(10, 30), testing).open, true); // in the morning break
+  assert.equal(checkQueueRequest({ nowMs: sunday11pm, settings: testing, device, track: track('a'), core: emptyCore() }).ok, true);
+  const long = track('b', { durationMs: 20 * MIN });
+  assert.equal(checkQueueRequest({ nowMs: sunday11pm, settings: testing, device, track: long, core: emptyCore() }).code, 'too_long');
+  assert.equal(validateSettings(settings, { testMode: true }).settings.testMode, true);
+  assert.ok(validateSettings(settings, { testMode: 'yes' }).errors.length);
+});
